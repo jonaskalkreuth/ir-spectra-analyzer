@@ -23,6 +23,8 @@ from .config import (
     TUNE_SUBSAMPLE,
 )
 from .data_acquisition import load_openspecy
+from .peak_detection import detect_peaks
+from .polymer_rules import classify_by_rules
 from .preprocessing import baseline_correct, smooth, normalize
 
 
@@ -421,3 +423,79 @@ def train_random_forest(
     test_f1 = f1_score(y_test, model.predict(X_test), average="macro")
     print(f"[rf] held-out test F1-macro: {test_f1:.3f}")
     return model
+
+
+# --- Step 21: model comparison -----------------------------------------------
+
+# The rule baseline doesn't take a feature vector — it takes a list of peak
+# wavenumbers (polymer_rules.classify_by_rules). So before it can vote on the
+# test set we bridge each processed 851-d spectrum back into peaks with the
+# existing detect_peaks(), then map those to the rule table. Option A: all three
+# classifiers start from the IDENTICAL processed spectra and load_split() rows.
+
+
+def predict_rule_baseline(X: np.ndarray) -> np.ndarray:
+    """
+    Classify each spectrum in X with the hand-written rule table.
+
+    X is the processed feature matrix (rows are 851-d vectors on WAVENUMBER_GRID).
+    For each row we detect peaks on that grid, hand the peak wavenumbers to the
+    rule table, and collect the predicted class string. This is the baseline arm
+    of the three-way comparison — the interpretable comparator the ML must beat.
+
+    Returns a 1-D array of predicted class labels, length len(X).
+    """
+    preds = []
+    for row in X:
+        # detect_peaks expects a normalized [0,1] spectrum + its wavenumber axis,
+        # which is exactly what a feature row is. Peak.wavenumber comes straight
+        # off WAVENUMBER_GRID, so it lands in the rule table's cm⁻¹ ranges.
+        peaks = detect_peaks(row, WAVENUMBER_GRID)
+        wavenumbers = [p.wavenumber for p in peaks]
+        preds.append(classify_by_rules(wavenumbers))
+    return np.array(preds)
+
+
+def compare_models(
+    features_path: Path = Path("data/openspecy/features.npz"),
+) -> dict:
+    """
+    Race the rule baseline vs SVM vs RF on the shared held-out test set.
+
+    Trains both ML models (full step-19/20 pipelines), then scores all three on
+    the IDENTICAL test rows. The fairness hinges on load_split() being
+    deterministic: train_svm/train_random_forest each split internally with the
+    same seed-42, and the load_split() call here reproduces the exact same rows,
+    so every classifier is judged on the same spectra.
+
+    Returns a results dict with the fitted models, each classifier's predictions,
+    its F1-macro, and y_test — everything the plotting script needs downstream.
+    """
+    # Fit the two ML models (each tunes + refits + reports its own held-out F1).
+    svm = train_svm(features_path)
+    rf = train_random_forest(features_path)
+
+    # Re-derive the SAME test rows. Deterministic seed → identical split, so these
+    # X_test/y_test rows are byte-for-byte the ones the models were evaluated on.
+    _, X_test, _, y_test = load_split(features_path)
+
+    predictions = {
+        "rule_baseline": predict_rule_baseline(X_test),
+        "svm": svm.predict(X_test),
+        "random_forest": rf.predict(X_test),
+    }
+    f1_macro = {
+        name: f1_score(y_test, y_pred, average="macro")
+        for name, y_pred in predictions.items()
+    }
+
+    print("\n=== Model comparison (F1-macro, held-out test set) ===")
+    for name, score in sorted(f1_macro.items(), key=lambda kv: kv[1], reverse=True):
+        print(f"    {score:.3f}  {name}")
+
+    return {
+        "models": {"svm": svm, "random_forest": rf},
+        "predictions": predictions,
+        "f1_macro": f1_macro,
+        "y_test": y_test,
+    }
