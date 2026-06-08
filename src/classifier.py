@@ -8,13 +8,20 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
-from .config import RANDOM_STATE, SVM_PARAM_GRID, TEST_SIZE, TUNE_SUBSAMPLE
+from .config import (
+    RANDOM_STATE,
+    RF_PARAM_GRID,
+    SVM_PARAM_GRID,
+    TEST_SIZE,
+    TUNE_SUBSAMPLE,
+)
 from .data_acquisition import load_openspecy
 from .preprocessing import baseline_correct, smooth, normalize
 
@@ -334,4 +341,83 @@ def train_svm(
     # The held-out test set is touched here for the FIRST and ONLY time.
     test_f1 = f1_score(y_test, model.predict(X_test), average="macro")
     print(f"[svm] held-out test F1-macro: {test_f1:.3f}")
+    return model
+
+
+# --- Step 20: Random Forest training -----------------------------------------
+
+# RF reuses the SAME load_split() as SVM (shared seed-42 split) so both models —
+# and the step-21 baseline — are scored on the identical held-out rows. The two
+# deviations from train_svm are deliberate (step-20 forks): (2A) NO Pipeline/scaler,
+# because trees split on per-feature thresholds and are scale-invariant; and (3A)
+# tuning runs on the FULL training set, because RF cost is ~linear and parallel,
+# unlike SVC's ~O(n²–n³) that forced the 4k subsample.
+
+
+def build_rf(random_state: int = RANDOM_STATE) -> RandomForestClassifier:
+    """
+    A bare RandomForestClassifier — no Pipeline, no scaler.
+
+    Scaling is pointless for a forest: each tree asks "is feature k above some
+    threshold?", and a threshold rescales with its column, so the split is
+    identical whether the axis runs 0–1 or 0–1000. `class_weight='balanced'`
+    reweights each class inversely to its frequency (same imbalance fix as the SVM).
+    `n_jobs=-1` grows the trees across all cores.
+    """
+    return RandomForestClassifier(
+        class_weight="balanced",
+        random_state=random_state,
+        n_jobs=-1,
+    )
+
+
+def tune_rf(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    random_state: int = RANDOM_STATE,
+) -> tuple[dict, float]:
+    """
+    Grid-search n_estimators × max_depth on the FULL training set.
+
+    No subsample (unlike tune_svm): RF training is ~O(n·log n·trees) and the fits
+    parallelize, so the whole 6-combo × 5-fold grid on all 16k rows is minutes.
+
+    Returns (best_params, best_cv_f1_macro).
+    """
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state)
+    search = GridSearchCV(
+        build_rf(random_state),
+        RF_PARAM_GRID,
+        scoring="f1_macro",
+        cv=cv,
+        n_jobs=-1,
+    )
+    search.fit(X_train, y_train)
+    return search.best_params_, search.best_score_
+
+
+def train_random_forest(
+    features_path: Path = Path("data/openspecy/features.npz"),
+) -> RandomForestClassifier:
+    """
+    Full step-20 pipeline: load shared split → tune on full train → refit best
+    params → evaluate once on the held-out test set.
+
+    Mirrors train_svm exactly, minus the subsample step. Returns the fitted forest
+    so step 22 can persist it and step 21 can compare it head-to-head with the SVM.
+    """
+    X_train, X_test, y_train, y_test = load_split(features_path)
+    print(f"[rf] train={X_train.shape[0]:,}  test={X_test.shape[0]:,}")
+
+    best_params, cv_f1 = tune_rf(X_train, y_train)
+    print(f"[rf] best params: {best_params}")
+    print(f"[rf] tuning CV F1-macro: {cv_f1:.3f}")
+
+    # set_params with the same keys the grid used → best_params drops straight in.
+    model = build_rf().set_params(**best_params)
+    model.fit(X_train, y_train)
+
+    # The held-out test set is touched here for the FIRST and ONLY time.
+    test_f1 = f1_score(y_test, model.predict(X_test), average="macro")
+    print(f"[rf] held-out test F1-macro: {test_f1:.3f}")
     return model

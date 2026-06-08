@@ -34,6 +34,16 @@ SVM_PARAM_GRID = [
      "svc__gamma": ["scale", 0.01, 0.001]},
 ]
 
+# RF grid: the two knobs the plan tunes — forest size and tree depth.
+# Plain dict (no kernel-style incompatibilities to guard against, unlike SVM).
+# Keys have NO prefix because RF is a bare estimator, not a Pipeline (step-20 fork 2A).
+#   n_estimators: more trees = steadier vote, diminishing returns; 200/400 brackets it.
+#   max_depth:    None = grow until pure (max variance); 20/40 cap depth to curb overfit.
+RF_PARAM_GRID = {
+    "n_estimators": [200, 400],
+    "max_depth": [None, 20, 40],
+}
+
 # Paths
 DEFAULT_DATA_PATH = "data/sample_spectra.csv"
 DEFAULT_OUTPUT_PATH = "results.json"
