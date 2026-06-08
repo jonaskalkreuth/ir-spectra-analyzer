@@ -21,6 +21,19 @@ REGIONS = {
     "Fingerprint":    (400,  1500),
 }
 
+# ML / classifier training (step 19+)
+RANDOM_STATE = 42           # shared seed → SVM/RF/baseline get the identical train/test split
+TEST_SIZE = 0.2             # fraction held out for the one-shot final evaluation
+TUNE_SUBSAMPLE = 4000       # stratified rows used for the hyperparameter search only
+
+# SVM grid: linear vs RBF (the kernel comparison), C over 4 decades, gamma RBF-only.
+# List-of-dicts (not one dict) so gamma is never paired with the linear kernel.
+SVM_PARAM_GRID = [
+    {"svc__kernel": ["linear"], "svc__C": [0.1, 1, 10, 100]},
+    {"svc__kernel": ["rbf"], "svc__C": [0.1, 1, 10, 100],
+     "svc__gamma": ["scale", 0.01, 0.001]},
+]
+
 # Paths
 DEFAULT_DATA_PATH = "data/sample_spectra.csv"
 DEFAULT_OUTPUT_PATH = "results.json"

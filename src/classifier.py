@@ -8,7 +8,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import f1_score
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
+from .config import RANDOM_STATE, SVM_PARAM_GRID, TEST_SIZE, TUNE_SUBSAMPLE
 from .data_acquisition import load_openspecy
 from .preprocessing import baseline_correct, smooth, normalize
 
@@ -212,3 +218,120 @@ def build_features(
     print(f"[features] X={X.shape} {X.dtype}, range {X.min():.3f}–{X.max():.3f}")
     print(f"[features] saved → {out_path}")
     return X, labels
+
+
+# --- Step 19: SVM training ---------------------------------------------------
+
+# RANDOM_STATE, TEST_SIZE, TUNE_SUBSAMPLE, SVM_PARAM_GRID now live in config.py.
+# RANDOM_STATE is the mechanism that makes the train/test split SHARED across models:
+# SVM (step 19), RF (step 20), and the rule baseline (step 21) all call load_split()
+# with this same seed → all three are evaluated on the identical held-out rows.
+
+
+def load_split(
+    features_path: Path = Path("data/openspecy/features.npz"),
+    test_size: float = TEST_SIZE,
+    random_state: int = RANDOM_STATE,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Load the cached feature matrix and carve off a locked, stratified test set.
+
+    `stratify=y` makes the 80/20 split preserve each class's proportion, so the
+    sparse classes (e.g. polyhaloolefins) appear in both train and test rather
+    than landing entirely on one side. The test set is touched exactly once, at
+    final evaluation — never during tuning.
+
+    Returns X_train, X_test, y_train, y_test.
+    """
+    data = np.load(features_path)
+    X, y = data["X"], data["labels"]
+    return train_test_split(
+        X, y, test_size=test_size, random_state=random_state, stratify=y
+    )
+
+
+def build_svm_pipeline() -> Pipeline:
+    """
+    StandardScaler → SVC, as one estimator.
+
+    Bundling them into a Pipeline is what keeps scaling leak-free: when this whole
+    object is handed to GridSearchCV, sklearn refits the scaler on each CV fold's
+    TRAINING rows only, then applies it to that fold's validation rows. Scaling X
+    up front instead would let every fold's validation statistics bleed into the
+    scaler the model was trained under.
+
+    StandardScaler standardizes each FEATURE (column = one wavenumber) to zero mean,
+    unit variance across samples — distinct from the per-spectrum [0,1] normalization
+    already baked into the features. RBF-SVM measures distances in feature space, so
+    columns must share a scale or the wide-variance wavenumbers dominate the kernel.
+    `class_weight='balanced'` reweights the hinge loss inversely to class frequency.
+    """
+    return Pipeline([
+        ("scaler", StandardScaler()),
+        ("svc", SVC(class_weight="balanced")),
+    ])
+
+
+def tune_svm(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    subsample: int = TUNE_SUBSAMPLE,
+    random_state: int = RANDOM_STATE,
+) -> tuple[dict, float]:
+    """
+    Grid-search SVM hyperparameters on a stratified SUBSAMPLE of the training set.
+
+    SVC is ~O(n²)–O(n³) in samples, so searching the whole 16k-row train set across
+    the grid × folds would be hours. Hyperparameters are stable to sample size, so we
+    tune on ~`subsample` stratified rows (minutes) and let the winner carry over to the
+    full-data refit. The subsample is drawn with the shared seed for reproducibility.
+
+    Returns (best_params, best_cv_f1_macro).
+    """
+    # Stratified down-sample: a second train_test_split, but we keep only the
+    # "test" side sized to `subsample`, stratified so class proportions hold.
+    if subsample < len(X_train):
+        _, X_tune, _, y_tune = train_test_split(
+            X_train, y_train, test_size=subsample,
+            random_state=random_state, stratify=y_train,
+        )
+    else:
+        X_tune, y_tune = X_train, y_train
+
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state)
+    search = GridSearchCV(
+        build_svm_pipeline(),
+        SVM_PARAM_GRID,
+        scoring="f1_macro",   # macro = every class counts equally, imbalance-honest
+        cv=cv,
+        n_jobs=-1,            # parallelize fits across cores
+    )
+    search.fit(X_tune, y_tune)
+    return search.best_params_, search.best_score_
+
+
+def train_svm(
+    features_path: Path = Path("data/openspecy/features.npz"),
+) -> Pipeline:
+    """
+    Full step-19 pipeline: load shared split → tune on subsample → refit best params
+    on the FULL training set → evaluate once on the held-out test set.
+
+    Returns the fitted pipeline (refit on all training data) so step 22 can persist it.
+    """
+    X_train, X_test, y_train, y_test = load_split(features_path)
+    print(f"[svm] train={X_train.shape[0]:,}  test={X_test.shape[0]:,}")
+
+    best_params, cv_f1 = tune_svm(X_train, y_train)
+    print(f"[svm] best params: {best_params}")
+    print(f"[svm] tuning CV F1-macro (on subsample): {cv_f1:.3f}")
+
+    # Refit the winning hyperparameters on ALL training rows. set_params takes the
+    # same 'svc__C' / 'svc__kernel' keys the grid used, so best_params drops straight in.
+    model = build_svm_pipeline().set_params(**best_params)
+    model.fit(X_train, y_train)
+
+    # The held-out test set is touched here for the FIRST and ONLY time.
+    test_f1 = f1_score(y_test, model.predict(X_test), average="macro")
+    print(f"[svm] held-out test F1-macro: {test_f1:.3f}")
+    return model
