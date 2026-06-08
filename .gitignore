@@ -27,6 +27,9 @@ data/*.csv.gz
 models/*.joblib
 models/*.pkl
 
+# Generated validation/plot artifacts
+scripts/*.png
+
 # Test cache
 .pytest_cache/
 
