@@ -4,10 +4,13 @@
 # the processed grid IS the feature vector fed to SVM/RF.
 # TODO: train/evaluate/persist implemented in steps B1b-1c-ii through B1b-1c-v.
 
+from datetime import date
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
@@ -259,7 +262,7 @@ def load_split(
     )
 
 
-def build_svm_pipeline() -> Pipeline:
+def build_svm_pipeline(probability: bool = False) -> Pipeline:
     """
     StandardScaler → SVC, as one estimator.
 
@@ -274,10 +277,17 @@ def build_svm_pipeline() -> Pipeline:
     already baked into the features. RBF-SVM measures distances in feature space, so
     columns must share a scale or the wide-variance wavenumbers dominate the kernel.
     `class_weight='balanced'` reweights the hinge loss inversely to class frequency.
+
+    `probability=True` (step 22, the persisted model only) fits Platt scaling — an
+    internal 5-fold CV that calibrates the margins into per-class probabilities, so
+    `.predict_proba()` works for the CLI's confidence readout. It's off during tuning
+    (step 19) because it costs an extra CV pass and the grid search never asks for
+    probabilities. `random_state` is pinned so that Platt calibration is reproducible.
     """
     return Pipeline([
         ("scaler", StandardScaler()),
-        ("svc", SVC(class_weight="balanced")),
+        ("svc", SVC(class_weight="balanced", probability=probability,
+                    random_state=RANDOM_STATE)),
     ])
 
 
@@ -321,10 +331,15 @@ def tune_svm(
 
 def train_svm(
     features_path: Path = Path("data/openspecy/features.npz"),
+    probability: bool = False,
 ) -> Pipeline:
     """
     Full step-19 pipeline: load shared split → tune on subsample → refit best params
     on the FULL training set → evaluate once on the held-out test set.
+
+    `probability` is passed only to the FINAL refit (step 22 persists with it on for
+    `.predict_proba`); tuning stays cheap with it off. The chosen-class decision is
+    unaffected by the flag, so the held-out F1 is identical either way.
 
     Returns the fitted pipeline (refit on all training data) so step 22 can persist it.
     """
@@ -337,7 +352,7 @@ def train_svm(
 
     # Refit the winning hyperparameters on ALL training rows. set_params takes the
     # same 'svc__C' / 'svc__kernel' keys the grid used, so best_params drops straight in.
-    model = build_svm_pipeline().set_params(**best_params)
+    model = build_svm_pipeline(probability=probability).set_params(**best_params)
     model.fit(X_train, y_train)
 
     # The held-out test set is touched here for the FIRST and ONLY time.
@@ -499,3 +514,44 @@ def compare_models(
         "f1_macro": f1_macro,
         "y_test": y_test,
     }
+
+
+# --- Step 22: persist the winning model --------------------------------------
+
+MODEL_PATH = Path("models/svm_classifier.joblib")
+
+
+def save_model(model: Pipeline, test_f1: float, path: Path = MODEL_PATH) -> Path:
+    """
+    Dump the fitted model + provenance to one joblib file.
+
+    We save a DICT, not the bare estimator: the model plus enough metadata to know
+    what it is months later without re-running anything — when it was trained, the
+    score it earned, the class labels it can emit, the feature grid its input must
+    match, and the sklearn version it was pickled under (joblib pickles are not
+    guaranteed loadable across major sklearn versions, so recording it is the
+    breadcrumb that explains a future load failure).
+
+    `model.classes_` is delegated by the Pipeline to the fitted SVC — the alphabetical
+    label order the model's outputs follow, so `predict_proba` column k ↔ classes[k].
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)  # models/ is gitignored; create if absent
+    bundle = {
+        "model": model,
+        "model_type": "svm",
+        "trained_at": date.today().isoformat(),
+        "test_f1_macro": float(test_f1),
+        "classes": list(model.classes_),
+        "feature_grid": (GRID_START, GRID_END, GRID_STEP),
+        "sklearn_version": sklearn.__version__,
+    }
+    joblib.dump(bundle, path)
+    return path
+
+
+def load_model(path: Path = MODEL_PATH) -> dict:
+    """
+    Load the persisted bundle. Returns the dict saved by `save_model`; the fitted
+    model is under `["model"]`, ready for `.predict` / `.predict_proba`.
+    """
+    return joblib.load(path)
