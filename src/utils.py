@@ -52,6 +52,21 @@ def print_results(results: dict) -> None:
     if classes:
         print(f"\n  Likely compound class(es): {', '.join(classes)}")
 
+    prediction = results.get("prediction")
+    if prediction:
+        print(
+            f"\n  Predicted material: {prediction['predicted_class']}  "
+            f"({prediction['confidence']:.1%} confidence)"
+        )
+        # Show the runners-up so model uncertainty is visible — a near-tie
+        # (e.g. 51% vs 47%) reads very differently from a confident 94%.
+        others = prediction["top_k"][1:]
+        if others:
+            ranked = ", ".join(
+                f"{o['class']} {o['probability']:.1%}" for o in others
+            )
+            print(f"  Runners-up: {ranked}")
+
     print(f"\n{sep}\n")
 
 

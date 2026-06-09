@@ -555,3 +555,58 @@ def load_model(path: Path = MODEL_PATH) -> dict:
     model is under `["model"]`, ready for `.predict` / `.predict_proba`.
     """
     return joblib.load(path)
+
+
+# --- Step 24: single-spectrum inference --------------------------------------
+
+def predict(
+    wavenumbers: np.ndarray,
+    intensities: np.ndarray,
+    *,
+    bundle: dict | None = None,
+    model_path: Path = MODEL_PATH,
+    top_k: int = 3,
+) -> dict:
+    """
+    Classify one raw spectrum: arrays in, prediction out.
+
+    Pure inference helper — takes the raw (wavenumbers, intensities) arrays, NOT a
+    file path, so it can be unit-tested on a synthetic spectrum with nothing on disk.
+    The spectrum is put through the EXACT training transform (`spectrum_to_features`:
+    resample to the 851-point grid → baseline → smooth → normalize) so inference and
+    training see identically-shaped vectors — the cardinal rule that stops train/serve
+    skew.
+
+    `bundle` lets a caller pass an already-loaded model dict (e.g. a test fixture, or
+    the CLI loading once); when None we load it from `model_path`.
+
+    Returns
+    -------
+    dict with keys:
+      predicted_class – the winning label (str)
+      confidence      – its probability in [0, 1] (float)
+      top_k           – list of {"class", "probability"} dicts, highest first
+    """
+    if bundle is None:
+        bundle = load_model(model_path)
+    model, classes = bundle["model"], np.asarray(bundle["classes"])
+
+    # spectrum_to_features returns a 1-D (851,) vector; sklearn wants a 2-D
+    # (n_samples, n_features) matrix, so reshape to a single-row batch.
+    features = spectrum_to_features(wavenumbers, intensities).reshape(1, -1)
+
+    # One Platt-calibrated probability per class (column k ↔ classes[k]); [0] picks
+    # the single row back out of the batch.
+    probabilities = model.predict_proba(features)[0]
+
+    # argsort is ascending → take the last top_k and flip to get highest-first.
+    order = np.argsort(probabilities)[::-1][:top_k]
+    ranked = [
+        {"class": str(classes[i]), "probability": round(float(probabilities[i]), 4)}
+        for i in order
+    ]
+    return {
+        "predicted_class": ranked[0]["class"],
+        "confidence": ranked[0]["probability"],
+        "top_k": ranked,
+    }

@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.analyzer import analyze
+from src.classifier import predict
 from src.loader import load_spectrum
 from src.utils import print_results, save_results, plot_spectrum
 from src import config
@@ -71,6 +72,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-baseline",
         action="store_true",
         help="Skip ALS baseline correction.",
+    )
+    p.add_argument(
+        "--no-classify",
+        action="store_true",
+        help="Skip ML material classification (report only).",
     )
     p.add_argument(
         "--prominence",
@@ -125,6 +131,24 @@ def main() -> None:
         min_distance_cm=args.min_distance,
         min_intensity_filter=args.intensity_filter,
     )
+
+    if not args.no_classify:
+        # Re-load the raw arrays for the ML path: analyze() consumes the file
+        # internally and returns only the report dict, so predict() (which wants
+        # raw arrays, not a path) needs its own read. One small CSV — negligible.
+        df = load_spectrum(args.input)
+        try:
+            results["prediction"] = predict(
+                df["wavenumber"].values, df["intensity"].values
+            )
+        except FileNotFoundError:
+            # models/ is gitignored, so a fresh clone has no trained model yet.
+            # Degrade to report-only with a hint, rather than crashing.
+            results["prediction"] = None
+            print(
+                "  (No trained model found — run scripts/persist_model.py "
+                "to enable classification.)\n"
+            )
 
     print_results(results)
 
