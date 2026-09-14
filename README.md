@@ -7,7 +7,8 @@ classical signal-processing chain a spectroscopist would (baseline correction,
 smoothing, peak detection, functional-group assignment), and then predicts the
 **material class** with a machine-learning model trained on the open
 [OpenSpecy](https://www.openspecy.org/) reference library. It ships an
-interpretable rule-table baseline, an SVM, and a Random Forest, compared
+interpretable rule-table baseline, a correlation library-matching baseline (the
+standard method instruments actually use), an SVM, and a Random Forest, compared
 head-to-head with leakage-aware evaluation — the project is as much about
 *honest method validation* as about the final score.
 
@@ -17,23 +18,32 @@ a real industrial use case: **microplastic screening — telling polymers apart
 
 ## Results
 
-Three classifiers on the **same** held-out 20% test set (4,113 spectra never
+Four classifiers on the **same** held-out 20% test set (4,113 spectra never
 seen during training or tuning), scored by **F1-macro** (every class weighted
 equally, so rare classes can't hide behind the common ones):
 
 | Model | F1-macro |
 |---|---:|
-| **SVM** (RBF kernel) | **0.976** |
+| Correlation library matching (1-NN) | **0.987** |
+| SVM (RBF kernel) | 0.976 |
 | Random Forest | 0.957 |
 | Rule-table baseline | 0.097 |
 
 ![SVM confusion matrix](reports/confusion_svm.png)
 
-The SVM's confusion matrix is near-diagonal — every class lands at 0.88–1.00,
-with the only notable confusion being the smallest class
-(poly(acrylamide/amid)s) occasionally read as mineral. The Random Forest is a
-hair behind but earns its place by being **interpretable** (see below). The
-rule baseline scores poorly *on purpose* — see
+The headline isn't "ML wins" — and that's the honest result.
+**Correlation library matching** — the standard way an instrument identifies a
+spectrum, by Pearson-correlating it against every reference and taking the
+closest match — tops the table at 0.987. On a *curated reference library* this
+is expected, not a surprise: each test spectrum is a near-twin of same-class
+references, so a nearest-neighbour lookup is hard to beat. The point of the
+comparison is exactly that honesty — the learned models land within ~1 F1-point
+**without carrying the 16k-spectrum library at query time** (the SVM is a fixed
+decision boundary, not a lookup against the whole set). The SVM's confusion
+matrix is near-diagonal — every class 0.88–1.00, the only notable leak being the
+smallest class (poly(acrylamide/amid)s) occasionally read as mineral — and the
+Random Forest trails slightly but earns its place by being **interpretable**
+(see below). The rule baseline scores poorly *on purpose* — see
 [Methodology & honest caveats](#methodology--honest-caveats).
 
 ## Methodology & honest caveats
@@ -60,6 +70,16 @@ guardrails against that — and the part a reviewer should read most closely.
   (an 8-class, ≥300-spectra cutoff → 20,563 spectra), then every surviving
   sample of every class is kept and `class_weight='balanced'` handles the
   remaining imbalance. No down-sampling of the common classes.
+- **Two baselines — a floor and a ceiling.** The interpretable rule table is
+  the *floor*; **correlation library matching** is the *ceiling* — the method
+  instruments actually use (1-NN by Pearson correlation against the training
+  references). It scores **0.987**, edging out both ML models. A hype-y
+  portfolio would omit it; including it is the point. On curated reference data
+  the standard method is already excellent, so the learned models' real
+  contribution is *matching* it with a compact model that needs no reference
+  library at inference — not beating it on accuracy. Where a learned boundary
+  would be expected to pull ahead — weathered, mixed, off-library field spectra
+  — is **out of scope here and not claimed**, only flagged.
 - **Why the rule baseline scores 0.10 — and why that's the honest number.**
   Real spectra are peak-rich (~18 detected peaks each), so a raw-count rule
   table hits ties constantly, and ties resolve to `"Unknown"` — the baseline

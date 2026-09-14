@@ -9,6 +9,7 @@ from src.classifier import (
     filter_classes,
     load_model,
     predict,
+    predict_correlation_baseline,
     resample_to_grid,
     save_model,
     spectrum_to_features,
@@ -105,6 +106,40 @@ def test_filter_classes_drops_rare_tail():
     kept_spectra, kept_labels = filter_classes(spectra, labels, min_count=2)
     assert set(kept_labels) == {"common"}
     assert kept_spectra.shape[0] == 3
+
+
+# --- Cluster 3b: correlation library-matching baseline -----------------------
+
+def test_correlation_baseline_matches_nearest_class():
+    # Two well-separated class prototypes (peak at 1700 vs 2900). Each test
+    # spectrum is a noisy copy of one prototype → 1-NN correlation must return
+    # that prototype's label.
+    wn = WAVENUMBER_GRID
+    proto_a = make_spectrum([1700], [1.0], wn)
+    proto_b = make_spectrum([2900], [1.0], wn)
+    X_train = np.stack([proto_a, proto_b])
+    y_train = np.array(["A", "B"])
+
+    rng = np.random.default_rng(0)
+    X_test = np.stack([
+        proto_b + rng.normal(0, 0.01, wn.shape),   # closest to B
+        proto_a + rng.normal(0, 0.01, wn.shape),   # closest to A
+    ])
+    preds = predict_correlation_baseline(X_train, y_train, X_test)
+    assert list(preds) == ["B", "A"]
+
+
+def test_correlation_baseline_is_scale_invariant():
+    # Pearson correlation ignores amplitude, so a test spectrum that is a
+    # same-shape but 10x-taller copy of a training row still matches its label.
+    wn = WAVENUMBER_GRID
+    proto_a = make_spectrum([1700], [1.0], wn)
+    proto_b = make_spectrum([2900], [1.0], wn)
+    X_train = np.stack([proto_a, proto_b])
+    y_train = np.array(["A", "B"])
+
+    preds = predict_correlation_baseline(X_train, y_train, np.stack([proto_a * 10.0]))
+    assert preds[0] == "A"
 
 
 # --- Cluster 4: model lifecycle (save/load + predict) ------------------------

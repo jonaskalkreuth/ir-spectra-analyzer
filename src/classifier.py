@@ -471,13 +471,45 @@ def predict_rule_baseline(X: np.ndarray) -> np.ndarray:
     return np.array(preds)
 
 
+def predict_correlation_baseline(
+    X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray
+) -> np.ndarray:
+    """
+    1-NN by Pearson correlation: each test spectrum takes the label of the most
+    correlated training spectrum.
+
+    This is the REAL industry baseline for spectral identification — OpenSpecy
+    itself identifies unknowns by correlating them against its reference library.
+    Unlike the peak-rule table (a deliberately weak, interpretable comparator),
+    a reviewer at an instrument maker recognises correlation matching as *the*
+    standard method, so beating-or-matching it is the result that actually counts.
+
+    Both matrices are the processed 851-d feature vectors from load_split(), so
+    this baseline sees the IDENTICAL inputs as the SVM/RF — a fair three-way race.
+
+    Returns a 1-D array of predicted class labels, length len(X_test).
+    """
+    # Pearson r between two vectors == cosine of their mean-subtracted forms. So
+    # row-center each spectrum, L2-normalize, and a plain dot product becomes the
+    # correlation matrix. (+1e-12 guards a zero-variance flat row from div-by-0.)
+    def _normed(M: np.ndarray) -> np.ndarray:
+        Mc = M - M.mean(axis=1, keepdims=True)
+        return Mc / (np.linalg.norm(Mc, axis=1, keepdims=True) + 1e-12)
+
+    train_n, test_n = _normed(X_train), _normed(X_test)
+    sims = test_n @ train_n.T          # (n_test, n_train) correlation matrix
+    best = sims.argmax(axis=1)         # most-correlated training row per test row
+    return y_train[best]
+
+
 def compare_models(
     features_path: Path = Path("data/openspecy/features.npz"),
 ) -> dict:
     """
-    Race the rule baseline vs SVM vs RF on the shared held-out test set.
+    Race the rule baseline vs correlation matching vs SVM vs RF on the shared
+    held-out test set.
 
-    Trains both ML models (full step-19/20 pipelines), then scores all three on
+    Trains both ML models (full step-19/20 pipelines), then scores all four on
     the IDENTICAL test rows. The fairness hinges on load_split() being
     deterministic: train_svm/train_random_forest each split internally with the
     same seed-42, and the load_split() call here reproduces the exact same rows,
@@ -490,12 +522,14 @@ def compare_models(
     svm = train_svm(features_path)
     rf = train_random_forest(features_path)
 
-    # Re-derive the SAME test rows. Deterministic seed → identical split, so these
-    # X_test/y_test rows are byte-for-byte the ones the models were evaluated on.
-    _, X_test, _, y_test = load_split(features_path)
+    # Re-derive the SAME train/test rows. Deterministic seed → identical split, so
+    # these rows are byte-for-byte the ones the models were evaluated on. X_train
+    # is needed too: the correlation baseline matches test spectra against it.
+    X_train, X_test, y_train, y_test = load_split(features_path)
 
     predictions = {
         "rule_baseline": predict_rule_baseline(X_test),
+        "correlation_baseline": predict_correlation_baseline(X_train, y_train, X_test),
         "svm": svm.predict(X_test),
         "random_forest": rf.predict(X_test),
     }
