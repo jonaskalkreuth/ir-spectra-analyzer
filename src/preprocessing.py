@@ -13,6 +13,9 @@ from scipy.signal import savgol_filter
 from scipy.sparse import diags
 from scipy.sparse.linalg import spsolve
 
+# Wavenumber spacing (cm⁻¹) of the OpenSpecy reference library.
+LIBRARY_STEP_CM = 6.0
+
 
 def convert_to_absorbance(transmittance: np.ndarray) -> np.ndarray:
     """
@@ -127,16 +130,20 @@ def to_openspecy_derivative(
 
     The OpenSpecy library (`derivative.rds`) stores processed spectra, not
     absorbance. This mirrors the `process_spec` defaults that produced it:
-      1. conform_spec : linear resample to a uniform 5 cm⁻¹ grid
+      1. conform_spec : linear resample to the library's uniform 6 cm⁻¹ grid
       2. Savitzky-Golay first derivative (window 11, polynomial 3)
       3. absolute value
       4. make_rel     : min-max scale to [0, 1]
+
+    The training library spectra live on a 6 cm⁻¹ grid (multiples of 6), so
+    inference input must be resampled onto that same grid. The Savitzky-Golay
+    window spans points, not cm⁻¹, so a different step would change its width.
 
     Absorbance band centres become local minima, flanked by two peaks.
 
     Returns
     -------
-    (wavenumbers_5cm, derivative) : the ascending 5 cm⁻¹ axis and the
+    (wavenumbers_6cm, derivative) : the ascending 6 cm⁻¹ axis and the
     processed signal on it
     """
     finite = ~np.isnan(intensities)
@@ -144,7 +151,7 @@ def to_openspecy_derivative(
     order = np.argsort(wn)  # np.interp needs an ascending axis
     wn, y = wn[order], y[order]
 
-    step = 5.0
+    step = LIBRARY_STEP_CM
     grid = np.arange(np.ceil(wn[0] / step) * step, wn[-1] + step / 2, step)
     resampled = np.interp(grid, wn, y)
 
