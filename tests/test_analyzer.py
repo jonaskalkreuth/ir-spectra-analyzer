@@ -58,3 +58,39 @@ def test_analyze_transmittance_mode():
     result = analyze(path, input_is_transmittance=True, correct_baseline=False)
     assert isinstance(result, dict)
     os.unlink(path)
+
+
+def test_cli_transmittance_converts_before_predict(tmp_path, monkeypatch):
+    # The CLI must hand predict() absorbance, not raw % transmittance.
+    import importlib.util
+    import sys
+    import numpy as np
+    from src.preprocessing import convert_to_absorbance
+
+    spec = importlib.util.spec_from_file_location(
+        "run_analysis", "scripts/run_analysis.py"
+    )
+    run_analysis = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(run_analysis)
+
+    transmittance = np.array([99.0, 30.0, 40.0, 5.0, 20.0])
+    csv = tmp_path / "trans.csv"
+    csv.write_text(
+        "wavenumber,transmittance\n"
+        + "".join(f"{w},{t}\n" for w, t in zip([4000, 3400, 2900, 1720, 1000], transmittance))
+    )
+
+    captured = {}
+
+    def fake_predict(wavenumbers, intensities):
+        captured["intensities"] = intensities
+        return None
+
+    monkeypatch.setattr(run_analysis, "predict", fake_predict)
+    monkeypatch.setattr(run_analysis, "print_results", lambda results: None)
+    monkeypatch.setattr(
+        sys, "argv", ["run_analysis", "--input", str(csv), "--transmittance", "--no-baseline"]
+    )
+    run_analysis.main()
+
+    np.testing.assert_allclose(captured["intensities"], convert_to_absorbance(transmittance))

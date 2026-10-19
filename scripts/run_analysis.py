@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.analyzer import analyze
 from src.classifier import predict
 from src.loader import load_spectrum
+from src.preprocessing import convert_to_absorbance
 from src.utils import print_results, save_results, plot_spectrum
 from src import config
 
@@ -137,17 +138,19 @@ def main() -> None:
         # internally and returns only the report dict, so predict() (which wants
         # raw arrays, not a path) needs its own read. One small CSV — negligible.
         df = load_spectrum(args.input)
+        intensities = df["intensity"].values
+        if args.transmittance:
+            # predict() expects absorbance, same as analyze() converts to.
+            intensities = convert_to_absorbance(intensities)
         try:
-            results["prediction"] = predict(
-                df["wavenumber"].values, df["intensity"].values
-            )
+            results["prediction"] = predict(df["wavenumber"].values, intensities)
         except FileNotFoundError:
             # models/ is gitignored, so a fresh clone has no trained model yet.
             # Degrade to report-only with a hint, rather than crashing.
             results["prediction"] = None
             print(
-                "  (No trained model found — run scripts/persist_model.py "
-                "to enable classification.)\n"
+                "  (No trained model found — see \"Reproduce from scratch\" "
+                "in the README to enable classification.)\n"
             )
 
     print_results(results)
