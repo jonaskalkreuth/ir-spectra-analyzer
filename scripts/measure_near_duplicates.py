@@ -24,7 +24,7 @@ from sklearn.metrics import f1_score
 # Allow running from the project root without installing the package.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.classifier import load_model, load_split, predict_correlation_baseline
+from src.classifier import _normed, load_model, load_split, predict_correlation_baseline
 
 THRESHOLDS = (0.999, 0.99, 0.95)
 NO_TWIN_THRESHOLDS = (0.99, 0.95)
@@ -38,10 +38,6 @@ def max_train_correlation(X_train: np.ndarray, X_test: np.ndarray) -> np.ndarray
     Row-standardise both matrices (mean 0, unit L2 norm), so a dot product is the
     Pearson r. Done in chunks of test rows to bound memory.
     """
-    def _normed(M: np.ndarray) -> np.ndarray:
-        Mc = M - M.mean(axis=1, keepdims=True)
-        return Mc / (np.linalg.norm(Mc, axis=1, keepdims=True) + 1e-12)
-
     train_n, test_n = _normed(X_train), _normed(X_test)
     return np.concatenate([
         (test_n[i:i + CHUNK] @ train_n.T).max(axis=1)
