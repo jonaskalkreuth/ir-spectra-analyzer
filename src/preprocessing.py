@@ -50,14 +50,13 @@ def baseline_als(
     baseline : estimated baseline array, same length as y
     """
     L = len(y)
-    D = diags([1, -2, 1], [0, 1, 2], shape=(L - 2, L))
+    D = diags([1.0, -2.0, 1.0], [0, 1, 2], shape=(L - 2, L))
     H = lam * D.T.dot(D)
     w = np.ones(L)
 
     for _ in range(n_iter):
         W = diags(w, 0)
-        Z = W + H
-        z = spsolve(Z, w * y)
+        z = spsolve((W + H).tocsc(), w * y)
         w = p * (y > z) + (1 - p) * (y <= z)
 
     return z
