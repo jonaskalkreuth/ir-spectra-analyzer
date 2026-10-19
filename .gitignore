@@ -39,3 +39,6 @@ scripts/*.png
 # IDE
 .vscode/
 .idea/
+
+# Private working plan
+FIX-PLAN.md
