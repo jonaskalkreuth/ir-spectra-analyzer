@@ -106,8 +106,11 @@ guardrails against that — and the part a reviewer should read most closely.
   representation mismatch, not the limit of a rule-based approach.
 - **The Random Forest learned the chemistry.** Its feature importances peak on
   the diagnostic IR bands — C–H stretch, the C=O carbonyl region (~1745 cm⁻¹,
-  the single most important feature), C–O / C–N, and O–H (~3650 cm⁻¹) —
-  recovered with no chemical priors, purely from the labelled spectra.
+  the single most important feature), and C–O / C–N — recovered with no
+  chemical priors, purely from the labelled spectra. A further peak near
+  3650 cm⁻¹ is probably not O–H. Spectral range coverage differs by class,
+  and many polyester spectra end below 3650 cm⁻¹. The flat, edge-clamped end
+  can then stand in for the class.
 - **Known weakness: polystyrene and PVC from an independent lab.** A spot check
   on 18 spectra from the external FTIR-Plastics dataset (real ATR-FTIR, not in
   the training library; 3 per class via `scripts/external_spot_check.py`) got
@@ -282,6 +285,7 @@ scripts/
   compare_models.py            # all four models → reports/ figures
   persist_model.py             # train + save the winning model bundle
   measure_near_duplicates.py   # near-twin share + no-twin subset scores
+  external_spot_check.py       # saved SVM on external FTIR-Plastics spectra
   make_sample_spectrum.py      # builds data/sample_spectra.csv from FTIR-Plastics
 notebooks/
   demo.ipynb           # walkthrough: report, prediction, model comparison, held-out gallery

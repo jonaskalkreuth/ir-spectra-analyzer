@@ -12,16 +12,18 @@ Column names are case-insensitive and common aliases are accepted:
   intensity   → 'intensity', 'absorbance', 'transmittance', 'abs', 'trans', 'signal'
 """
 
+import warnings
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
-from pathlib import Path
 
 # Tuples, not sets: the order is the match priority, so the column choice is deterministic.
 _WN_ALIASES = ("wavenumber", "wavenumbers", "wn", "cm-1", "cm_1", "freq")
 _INT_ALIASES = ("intensity", "absorbance", "transmittance", "abs", "trans", "signal")
 
 
-def _find_column(columns: list, aliases: tuple) -> str:
+def _find_column(columns: list, aliases: tuple) -> str | None:
     """Return the column matching the highest-priority alias (case-insensitive)."""
     lower_map = {c.lower().strip(): c for c in columns}
     for alias in aliases:
@@ -83,7 +85,6 @@ def load_spectrum(path: str) -> pd.DataFrame:
     df = df.dropna(subset=["wavenumber", "intensity"])
     n_dropped = n_before - len(df)
     if n_dropped > 0:
-        import warnings
         warnings.warn(
             f"Dropped {n_dropped} row(s) with missing values from '{path}'.",
             stacklevel=2,
@@ -99,7 +100,6 @@ def load_spectrum(path: str) -> pd.DataFrame:
     n_bad = df[["wavenumber", "intensity"]].isna().any(axis=1).sum()
     if n_bad > 0:
         df = df.dropna(subset=["wavenumber", "intensity"])
-        import warnings
         warnings.warn(
             f"Dropped {n_bad} non-numeric row(s) from '{path}'.",
             stacklevel=2,
@@ -110,7 +110,6 @@ def load_spectrum(path: str) -> pd.DataFrame:
     # Validate wavenumber range (IR: ~400–4000 cm⁻¹; allow some slack)
     wn = df["wavenumber"]
     if wn.max() < 200 or wn.min() > 8000:
-        import warnings
         warnings.warn(
             f"Wavenumber range {wn.min():.0f}–{wn.max():.0f} cm⁻¹ looks unusual "
             f"for mid-IR (expected ~400–4000 cm⁻¹).",
