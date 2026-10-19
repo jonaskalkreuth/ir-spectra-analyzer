@@ -234,9 +234,9 @@ def build_features(
 
 # --- SVM training ------------------------------------------------------------
 
-# RANDOM_STATE is the mechanism that makes the train/test split SHARED across models:
-# SVM, RF, and the rule baseline all call load_split()
-# with this same seed → all three are evaluated on the identical held-out rows.
+# RANDOM_STATE makes the train/test split shared across models: every model is
+# scored after a load_split() call with this seed, so all four are evaluated on
+# the same held-out rows.
 
 
 def load_split(
@@ -449,7 +449,7 @@ def train_random_forest(
 # wavenumbers (polymer_rules.classify_by_rules). So before it can vote on the
 # test set we bridge each processed 851-d spectrum back into peaks with the
 # existing detect_peaks(), then map those to the rule table. That way all
-# classifiers start from the IDENTICAL processed spectra and load_split() rows.
+# classifiers start from the same processed spectra and load_split() rows.
 
 
 def predict_rule_baseline(X: np.ndarray) -> np.ndarray:
@@ -458,8 +458,8 @@ def predict_rule_baseline(X: np.ndarray) -> np.ndarray:
 
     X is the processed feature matrix (rows are 851-d vectors on WAVENUMBER_GRID).
     For each row we detect peaks on that grid, hand the peak wavenumbers to the
-    rule table, and collect the predicted class string. This is the baseline arm
-    of the three-way comparison — the interpretable comparator the ML must beat.
+    rule table, and collect the predicted class string. This is the interpretable
+    floor of the four-way comparison.
 
     Returns a 1-D array of predicted class labels, length len(X).
     """
@@ -489,14 +489,11 @@ def predict_correlation_baseline(
     1-NN by Pearson correlation: each test spectrum takes the label of the most
     correlated training spectrum.
 
-    This is the REAL industry baseline for spectral identification — OpenSpecy
-    itself identifies unknowns by correlating them against its reference library.
-    Unlike the peak-rule table (a deliberately weak, interpretable comparator),
-    a reviewer at an instrument maker recognises correlation matching as *the*
-    standard method, so beating-or-matching it is the result that actually counts.
+    This is the standard method for spectral identification: OpenSpecy itself
+    identifies unknowns by correlating them against its reference library.
 
     Both matrices are the processed 851-d feature vectors from load_split(), so
-    this baseline sees the IDENTICAL inputs as the SVM/RF — a fair three-way race.
+    this baseline sees the same inputs as the SVM and RF.
 
     Returns a 1-D array of predicted class labels, length len(X_test).
     """

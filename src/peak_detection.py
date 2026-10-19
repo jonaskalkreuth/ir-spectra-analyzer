@@ -31,7 +31,7 @@ def detect_peaks(
     min_prominence: float = config.MIN_PROMINENCE,
     min_height: float = config.MIN_HEIGHT,
     min_distance_cm: float = config.MIN_DISTANCE_CM,
-) -> list:
+) -> list[Peak]:
     """
     Detect absorption peaks in a preprocessed (normalized) IR spectrum.
 

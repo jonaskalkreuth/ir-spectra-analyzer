@@ -19,7 +19,9 @@ artefact; the .rds is only needed once.
 """
 
 import hashlib
+import os
 import subprocess
+import tempfile
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -169,7 +171,6 @@ def export_to_csv(
         return
 
     # Write the R script to a temp file
-    import tempfile, os
     with tempfile.NamedTemporaryFile(mode="w", suffix=".R", delete=False) as f:
         f.write(_EXPORT_R_SCRIPT)
         script_path = f.name

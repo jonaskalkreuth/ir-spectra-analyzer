@@ -12,7 +12,7 @@ import logging
 import numpy as np
 
 from .loader import load_spectrum
-from .preprocessing import baseline_correct, smooth, normalize
+from .preprocessing import baseline_correct, convert_to_absorbance, smooth, normalize
 from .peak_detection import detect_peaks
 from .functional_groups import assign_groups, summarize_compound_classes
 from . import config
@@ -47,7 +47,6 @@ def preprocess(
 
     if input_is_transmittance:
         logger.debug("Converting transmittance to absorbance.")
-        from .preprocessing import convert_to_absorbance
         intensity = convert_to_absorbance(intensity)
 
     if correct_baseline:
