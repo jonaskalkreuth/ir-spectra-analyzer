@@ -62,8 +62,8 @@ guardrails against that — and the part a reviewer should read most closely.
 
 - **Leakage-aware evaluation.** A stratified 20% slice is locked away *before*
   any tuning. Hyperparameters are chosen by cross-validation on the remaining
-  80% only; the final F1-macro is measured **once** on the untouched 20%. No
-  parameter ever "sees" the test set.
+  80% only, so no hyperparameter is tuned on the test set. The test scores did
+  make one decision: they picked the SVM over the Random Forest.
 - **Per-fold scaling.** The SVM's `StandardScaler` is fit *inside* each
   cross-validation fold (via a scikit-learn `Pipeline`), so a fold's own
   mean/variance never leaks into its training. The Random Forest uses **no
@@ -74,6 +74,8 @@ guardrails against that — and the part a reviewer should read most closely.
   Near-duplicates are not rare. On the seed-42 split, 31% of test spectra have a
   training neighbour at Pearson r ≥ 0.999, 71% at r ≥ 0.99, and 86% at
   r ≥ 0.95. A plain stratified split therefore rewards memorising the library.
+  Tuning cross-validation shares near-twins between folds too, and the chosen
+  C (100) is the largest value in the grid.
   On the 1,199 test spectra with no neighbour at r ≥ 0.99, the SVM scores 0.949
   and correlation matching 0.968. On the 568 with no neighbour at r ≥ 0.95, they
   score 0.873 and 0.920, but that subset is noisy (11–65 spectra in each
@@ -188,7 +190,7 @@ conjugated ester C=O at 1712 cm⁻¹ as ketone or carboxylic acid.
 
 **Input is absorbance; the model sees derivatives.** The OpenSpecy training
 library holds absolute first-derivative spectra. Before classifying, the CLI
-converts the input the same way OpenSpecy does: resample to 5 cm⁻¹,
+converts the input the same way OpenSpecy does: resample to 6 cm⁻¹,
 Savitzky-Golay first derivative (window 11, polynomial 3), absolute value,
 then min-max scaling to 0–1.
 
@@ -249,10 +251,12 @@ trained model.
    prominence-based peak detection.
 2. **Feature engineering** (`classifier.py`) — each spectrum is resampled onto a
    fixed **600–4000 cm⁻¹ grid at 4 cm⁻¹ steps (851 features)** and fed to the ML
-   models *as the full spectrum*. Training spectra are already in OpenSpecy's
-   derivative form; at inference, `predict()` first converts absorbance input
-   to that form. Peaks are **not** the ML feature — they feed the
-   human-readable report and the rule baseline only.
+   models *as the full spectrum*. Spectral range coverage differs by class, so
+   the flat, edge-clamped ends of short spectra can act as a shortcut feature.
+   Training spectra are already in OpenSpecy's derivative form; at inference,
+   `predict()` first converts absorbance input to that form. Peaks are **not**
+   the ML feature — they feed the human-readable report and the rule baseline
+   only.
 3. **Two parallel "opinions"** — a classical, interpretable rule-table baseline
    (`polymer_rules.py`, characteristic peak ranges per class) and the trained
    ML models (`classifier.py`). The CLI shows both the spectroscopist's report
