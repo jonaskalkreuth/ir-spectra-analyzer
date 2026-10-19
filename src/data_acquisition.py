@@ -18,6 +18,7 @@ that no pure-Python parser can handle efficiently. The CSVs are the durable
 artefact; the .rds is only needed once.
 """
 
+import hashlib
 import subprocess
 import urllib.request
 import urllib.error
@@ -29,6 +30,9 @@ import pandas as pd
 # x7dpz is the OSF *project* node; 2qbkt is the file-level GUID for derivative.rds.
 # OSF project /download returns 500; file GUID /download works correctly.
 _OSF_URL = "https://osf.io/2qbkt/download"
+# SHA-256 of the derivative.rds the current model was trained from. A mismatch
+# means OSF changed the file (or the download was corrupted).
+_RDS_SHA256 = "5e2dd3c1512d8f8a870cc08deeed0153ad09c4aa6d9d19b81788e1a40e65c20d"
 _DEFAULT_RDS = Path("data/openspecy/derivative.rds")
 _DEFAULT_DIR = Path("data/openspecy")
 
@@ -77,6 +81,8 @@ def download_openspecy(
     Download derivative.rds from OSF to *dest*.
 
     Skips the download if the file already exists (pass force=True to re-download).
+    Downloads to `<dest>.part` and renames only after the SHA-256 matches, so a
+    partial or changed file never lands at *dest*.
     Raises RuntimeError immediately if the download fails — fail loud, fail early.
 
     Parameters
@@ -97,14 +103,29 @@ def download_openspecy(
     dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"[data_acquisition] Downloading from {_OSF_URL} ...")
 
+    part = dest.with_name(dest.name + ".part")
     try:
-        urllib.request.urlretrieve(_OSF_URL, dest)
+        urllib.request.urlretrieve(_OSF_URL, part)
     except urllib.error.URLError as exc:
+        part.unlink(missing_ok=True)
         raise RuntimeError(
             f"Download failed — check your internet connection.\n"
             f"URL: {_OSF_URL}\n"
             f"Error: {exc}"
         ) from exc
+
+    sha256 = hashlib.sha256()
+    with open(part, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            sha256.update(chunk)
+    if sha256.hexdigest() != _RDS_SHA256:
+        part.unlink()
+        raise RuntimeError(
+            f"Checksum mismatch for {_OSF_URL}\n"
+            f"Expected: {_RDS_SHA256}\n"
+            f"Got:      {sha256.hexdigest()}"
+        )
+    part.replace(dest)
 
     size_mb = dest.stat().st_size / 1_000_000
     print(f"[data_acquisition] Saved {size_mb:.1f} MB → {dest}")

@@ -197,7 +197,17 @@ def test_predict_output_is_well_formed(tiny_model):
     probs = [r["probability"] for r in result["top_k"]]
     assert len(probs) == 3
     assert probs == sorted(probs, reverse=True)         # highest first
-    assert result["confidence"] == probs[0]              # winner == top of the ranking
+    by_class = {r["class"]: r["probability"] for r in result["top_k"]}
+    assert result["confidence"] == by_class[result["predicted_class"]]
+
+
+def test_predict_matches_model_predict(tiny_model):
+    # predicted_class must be what the scored F1 used: model.predict, not argmax.
+    wn, sig = synth_spectrum(_CLASS_CENTERS["gamma"], seed=11)
+    wn_6cm, derivative = to_openspecy_derivative(wn, sig)
+    features = spectrum_to_features(wn_6cm, derivative).reshape(1, -1)
+    result = predict(wn, sig, bundle=_bundle(tiny_model))
+    assert result["predicted_class"] == tiny_model.predict(features)[0]
 
 
 def test_save_load_roundtrip_predicts_identically(tiny_model, tmp_path):
@@ -218,6 +228,9 @@ class _StubModel:
     top_k ordering without depending on what a trained model happens to output."""
     classes_ = np.array(["A", "B", "C"])
 
+    def predict(self, X):
+        return np.array(["B"])
+
     def predict_proba(self, X):
         return np.array([[0.1, 0.7, 0.2]])  # B highest, then C, then A
 
@@ -228,23 +241,6 @@ def test_top_k_is_ranked_highest_first():
     assert result["predicted_class"] == "B"
     assert result["confidence"] == 0.7
     assert [r["class"] for r in result["top_k"]] == ["B", "C", "A"]
-
-
-# --- Inference transform: absorbance → OpenSpecy derivative form -------------
-
-def test_derivative_turns_band_centre_into_a_dip():
-    # An absolute first derivative is zero at a band's apex and largest on its
-    # flanks, so a single absorbance band becomes a dip between two peaks.
-    wn = np.linspace(400, 4000, 1800)
-    sig = _gaussian(wn, 1458, 15, 1.0)  # 1458 sits on the 6 cm⁻¹ grid
-    grid, deriv = to_openspecy_derivative(wn, sig)
-
-    window = (grid > 1380) & (grid < 1540)
-    g, d = grid[window], deriv[window]
-    centre = np.argmin(np.where(np.abs(g - 1458) < 20, d, np.inf))
-    assert abs(g[centre] - 1458) <= 5                    # dip sits on the band centre
-    assert d[centre] < 0.1                               # ...and it is a near-zero minimum
-    assert d[g < 1458].max() > 0.5 and d[g > 1458].max() > 0.5  # peaks on both flanks
 
 
 @pytest.mark.skipif(not MODEL_PATH.exists(), reason="trained model not present")

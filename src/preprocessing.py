@@ -13,8 +13,15 @@ from scipy.signal import savgol_filter
 from scipy.sparse import diags
 from scipy.sparse.linalg import spsolve
 
+from . import config
+
 # Wavenumber spacing (cm⁻¹) of the OpenSpecy reference library.
 LIBRARY_STEP_CM = 6.0
+
+# Savitzky-Golay derivative settings of OpenSpecy's library processing.
+# Fixed by the library, so separate from the report's SAVGOL_* smoothing.
+DERIV_WINDOW = 11
+DERIV_POLYORDER = 3
 
 
 def convert_to_absorbance(transmittance: np.ndarray) -> np.ndarray:
@@ -29,8 +36,8 @@ def convert_to_absorbance(transmittance: np.ndarray) -> np.ndarray:
 
 def baseline_als(
     y: np.ndarray,
-    lam: float = 1e5,
-    p: float = 0.01,
+    lam: float = config.ALS_LAMBDA,
+    p: float = config.ALS_P,
     n_iter: int = 10,
 ) -> np.ndarray:
     """
@@ -67,8 +74,8 @@ def baseline_als(
 
 def baseline_correct(
     y: np.ndarray,
-    lam: float = 1e5,
-    p: float = 0.01,
+    lam: float = config.ALS_LAMBDA,
+    p: float = config.ALS_P,
 ) -> np.ndarray:
     """
     Subtract the ALS baseline from the spectrum.
@@ -82,8 +89,8 @@ def baseline_correct(
 
 def smooth(
     signal: np.ndarray,
-    window_length: int = 11,
-    polyorder: int = 3,
+    window_length: int = config.SAVGOL_WINDOW,
+    polyorder: int = config.SAVGOL_POLYORDER,
 ) -> np.ndarray:
     """
     Savitzky-Golay smoothing filter.
@@ -157,12 +164,14 @@ def to_openspecy_derivative(
 
     step = LIBRARY_STEP_CM
     grid = np.arange(np.ceil(wn[0] / step) * step, wn[-1] + step / 2, step)
-    if len(grid) < 11:
+    if len(grid) < DERIV_WINDOW:
         raise ValueError(
             f"Spectrum spans {len(grid)} points on the {step:g} cm⁻¹ grid; "
-            "classification needs at least 11."
+            f"classification needs at least {DERIV_WINDOW}."
         )
     resampled = np.interp(grid, wn, y)
 
-    derivative = np.abs(savgol_filter(resampled, window_length=11, polyorder=3, deriv=1))
+    derivative = np.abs(savgol_filter(
+        resampled, window_length=DERIV_WINDOW, polyorder=DERIV_POLYORDER, deriv=1
+    ))
     return grid, normalize(derivative)
