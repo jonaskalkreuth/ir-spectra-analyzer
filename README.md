@@ -108,11 +108,12 @@ guardrails against that — and the part a reviewer should read most closely.
   the diagnostic IR bands — C–H stretch, the C=O carbonyl region (~1745 cm⁻¹,
   the single most important feature), C–O / C–N, and O–H (~3650 cm⁻¹) —
   recovered with no chemical priors, purely from the labelled spectra.
-- **Known weakness: polystyrene from an independent lab.** A spot check on 12
-  spectra from the external FTIR-Plastics dataset (real ATR-FTIR, not in the
-  training library) got PET 3/3, HDPE 3/3 and PP 2/3 right, but PS 0/3.
-  The PS spectra were read as polyethylene or polypropylene. The cause is not
-  yet investigated, and a full external test is still to do.
+- **Known weakness: polystyrene and PVC from an independent lab.** A spot check
+  on 18 spectra from the external FTIR-Plastics dataset (real ATR-FTIR, not in
+  the training library; 3 per class via `scripts/external_spot_check.py`) got
+  PET, HDPE and LDPE 3/3 and PP 2/3 right, but PS 0/3 and PVC 0/3.
+  The PS spectra were read as polyethylene, and the PVC spectra as mineral. The
+  cause is not yet investigated, and a full external test is still to do.
 
 ![RF feature importances on the wavenumber axis](reports/rf_importances.png)
 ![RF confusion matrix](reports/confusion_rf.png)
