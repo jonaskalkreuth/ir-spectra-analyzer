@@ -46,4 +46,3 @@ RF_PARAM_GRID = {
 
 # Paths
 DEFAULT_DATA_PATH = "data/sample_spectra.csv"
-DEFAULT_OUTPUT_PATH = "results.json"

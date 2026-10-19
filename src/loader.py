@@ -16,12 +16,13 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-_WN_ALIASES = {"wavenumber", "wavenumbers", "wn", "cm-1", "cm_1", "freq"}
-_INT_ALIASES = {"intensity", "absorbance", "transmittance", "abs", "trans", "signal"}
+# Tuples, not sets: the order is the match priority, so the column choice is deterministic.
+_WN_ALIASES = ("wavenumber", "wavenumbers", "wn", "cm-1", "cm_1", "freq")
+_INT_ALIASES = ("intensity", "absorbance", "transmittance", "abs", "trans", "signal")
 
 
-def _find_column(columns: list, aliases: set) -> str:
-    """Return the first column name that matches any alias (case-insensitive)."""
+def _find_column(columns: list, aliases: tuple) -> str:
+    """Return the column matching the highest-priority alias (case-insensitive)."""
     lower_map = {c.lower().strip(): c for c in columns}
     for alias in aliases:
         if alias in lower_map:
