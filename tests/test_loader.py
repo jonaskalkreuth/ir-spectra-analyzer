@@ -62,6 +62,13 @@ def test_bad_columns():
     os.unlink(path)
 
 
+def test_non_numeric_only_rejected():
+    path = _write_tmp("wavenumber,intensity\nabc,x\ndef,y\n")
+    with pytest.warns(UserWarning), pytest.raises(ValueError, match="No numeric"):
+        load_spectrum(path)
+    os.unlink(path)
+
+
 def test_load_multiple():
     p1 = _write_tmp(VALID_CSV)
     p2 = _write_tmp(VALID_CSV)
