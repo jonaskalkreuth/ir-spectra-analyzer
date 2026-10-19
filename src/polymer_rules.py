@@ -61,7 +61,7 @@ POLYMER_RULES: dict[str, list[tuple[int, int]]] = {
     ],
 
     # Organic matter: deliberately weak rules — this is a heterogeneous catch-all.
-    # Will only score if nothing more specific matches (scoring logic handles this).
+    # Its broad ranges overlap the specific classes; ties resolve to "Unknown".
     "organic matter": [
         (2840, 2970),   # aliphatic C-H stretch region — present in most organics
         (1580, 1760),   # C=O or C=C stretch region — broad organic signature

@@ -99,6 +99,10 @@ def smooth(
     wl = window_length if window_length % 2 == 1 else window_length + 1
     min_wl = polyorder + 2 if (polyorder + 2) % 2 == 1 else polyorder + 3
     wl = max(wl, min_wl)
+    if len(signal) < min_wl:
+        raise ValueError(
+            f"Spectrum has {len(signal)} points; smoothing needs at least {min_wl}."
+        )
     # Clamp to signal length (must be odd and <= len(signal))
     max_wl = len(signal) if len(signal) % 2 == 1 else len(signal) - 1
     wl = min(wl, max(max_wl, min_wl))
@@ -153,6 +157,11 @@ def to_openspecy_derivative(
 
     step = LIBRARY_STEP_CM
     grid = np.arange(np.ceil(wn[0] / step) * step, wn[-1] + step / 2, step)
+    if len(grid) < 11:
+        raise ValueError(
+            f"Spectrum spans {len(grid)} points on the {step:g} cm⁻¹ grid; "
+            "classification needs at least 11."
+        )
     resampled = np.interp(grid, wn, y)
 
     derivative = np.abs(savgol_filter(resampled, window_length=11, polyorder=3, deriv=1))

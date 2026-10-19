@@ -104,6 +104,8 @@ def load_spectrum(path: str) -> pd.DataFrame:
             f"Dropped {n_bad} non-numeric row(s) from '{path}'.",
             stacklevel=2,
         )
+        if df.empty:
+            raise ValueError(f"No numeric data rows in '{path}'.")
 
     # Validate wavenumber range (IR: ~400–4000 cm⁻¹; allow some slack)
     wn = df["wavenumber"]

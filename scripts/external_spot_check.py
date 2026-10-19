@@ -34,9 +34,8 @@ absorbance. It then goes through `src.classifier.predict`, the same path the CLI
 uses (derivative conversion, resampling, preprocessing, saved SVM).
 
 Selection: per class, the first N files after sorting by path relative to the
-dataset folder. The README's spot check used 12 spectra (3 each of PET, HDPE,
-PP, PS), but which 12 files is not recorded. This selection is a reproducible
-stand-in, so its numbers may differ from the README's.
+dataset folder. The README's spot check (18 spectra) is this selection with
+`--per-class 3`.
 
 Run from the project root (the model is read from models/svm_classifier.joblib):
 

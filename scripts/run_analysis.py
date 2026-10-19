@@ -123,15 +123,18 @@ def main() -> None:
         format="%(levelname)s  %(name)s: %(message)s",
     )
 
-    results = analyze(
-        args.input,
-        correct_baseline=not args.no_baseline,
-        input_is_transmittance=args.transmittance,
-        min_prominence=args.prominence,
-        min_height=args.min_height,
-        min_distance_cm=args.min_distance,
-        min_intensity_filter=args.intensity_filter,
-    )
+    try:
+        results = analyze(
+            args.input,
+            correct_baseline=not args.no_baseline,
+            input_is_transmittance=args.transmittance,
+            min_prominence=args.prominence,
+            min_height=args.min_height,
+            min_distance_cm=args.min_distance,
+            min_intensity_filter=args.intensity_filter,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        sys.exit(f"error: {exc}")
 
     if not args.no_classify:
         # Re-load the raw arrays for the ML path: analyze() consumes the file
@@ -152,6 +155,10 @@ def main() -> None:
                 "  (No trained model found — see \"Reproduce from scratch\" "
                 "in the README to enable classification.)\n"
             )
+        except ValueError as exc:
+            # e.g. a spectrum too short for the derivative window.
+            results["prediction"] = None
+            print(f"  (Classification skipped: {exc})\n")
 
     print_results(results)
 

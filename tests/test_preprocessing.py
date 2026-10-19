@@ -77,3 +77,15 @@ def test_to_openspecy_derivative_6cm_grid():
     grid, _ = to_openspecy_derivative(wn, np.random.rand(len(wn)))
     np.testing.assert_allclose(np.diff(grid), 6.0)
     np.testing.assert_allclose(grid % 6.0, 0.0)
+
+
+def test_smooth_rejects_too_short_signal():
+    with pytest.raises(ValueError, match="at least"):
+        smooth(np.array([0.1, 0.2, 0.3, 0.1]))
+
+
+def test_to_openspecy_derivative_rejects_too_short_span():
+    # 1000–1030 cm⁻¹ covers only 6 points on the 6 cm⁻¹ grid
+    wn = np.linspace(1000.0, 1030.0, 20)
+    with pytest.raises(ValueError, match="at least 11"):
+        to_openspecy_derivative(wn, np.ones(len(wn)))
