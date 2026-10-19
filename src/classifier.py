@@ -234,7 +234,6 @@ def build_features(
 
 # --- SVM training ------------------------------------------------------------
 
-# RANDOM_STATE, TEST_SIZE, TUNE_SUBSAMPLE, SVM_PARAM_GRID now live in config.py.
 # RANDOM_STATE is the mechanism that makes the train/test split SHARED across models:
 # SVM, RF, and the rule baseline all call load_split()
 # with this same seed → all three are evaluated on the identical held-out rows.
@@ -250,8 +249,8 @@ def load_split(
 
     `stratify=y` makes the 80/20 split preserve each class's proportion, so the
     sparse classes (e.g. polyhaloolefins) appear in both train and test rather
-    than landing entirely on one side. The test set is touched exactly once, at
-    final evaluation — never during tuning.
+    than landing entirely on one side. The test set is used only for final
+    evaluation — never used for tuning.
 
     Returns X_train, X_test, y_train, y_test.
     """
@@ -338,8 +337,9 @@ def train_svm(
     on the FULL training set → evaluate once on the held-out test set.
 
     `probability` is passed only to the FINAL refit (persist_model.py turns it on for
-    `.predict_proba`); tuning stays cheap with it off. The chosen-class decision is
-    unaffected by the flag, so the held-out F1 is identical either way.
+    `.predict_proba`); tuning stays cheap with it off. The flag leaves `.predict` unchanged,
+    but the argmax of `.predict_proba` (used by `predict()`) disagrees with it on 11 of
+    4,113 test spectra (F1 0.9770 vs 0.9758).
 
     Returns the fitted pipeline (refit on all training data) so it can be persisted.
     """
@@ -355,7 +355,7 @@ def train_svm(
     model = build_svm_pipeline(probability=probability).set_params(**best_params)
     model.fit(X_train, y_train)
 
-    # The held-out test set is touched here for the FIRST and ONLY time.
+    # Final evaluation on the held-out test set, which is never used for tuning.
     test_f1 = f1_score(
         y_test, model.predict(X_test), labels=sorted(np.unique(y_train)), average="macro"
     )
@@ -435,7 +435,7 @@ def train_random_forest(
     model = build_rf().set_params(**best_params)
     model.fit(X_train, y_train)
 
-    # The held-out test set is touched here for the FIRST and ONLY time.
+    # Final evaluation on the held-out test set, which is never used for tuning.
     test_f1 = f1_score(
         y_test, model.predict(X_test), labels=sorted(np.unique(y_train)), average="macro"
     )
@@ -474,6 +474,14 @@ def predict_rule_baseline(X: np.ndarray) -> np.ndarray:
     return np.array(preds)
 
 
+def _normed(M: np.ndarray) -> np.ndarray:
+    """Row-center and L2-normalize, so a dot product of two rows is their Pearson r."""
+    # Pearson r between two vectors == cosine of their mean-subtracted forms.
+    # (+1e-12 guards a zero-variance flat row from div-by-0.)
+    Mc = M - M.mean(axis=1, keepdims=True)
+    return Mc / (np.linalg.norm(Mc, axis=1, keepdims=True) + 1e-12)
+
+
 def predict_correlation_baseline(
     X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray
 ) -> np.ndarray:
@@ -492,13 +500,6 @@ def predict_correlation_baseline(
 
     Returns a 1-D array of predicted class labels, length len(X_test).
     """
-    # Pearson r between two vectors == cosine of their mean-subtracted forms. So
-    # row-center each spectrum, L2-normalize, and a plain dot product becomes the
-    # correlation matrix. (+1e-12 guards a zero-variance flat row from div-by-0.)
-    def _normed(M: np.ndarray) -> np.ndarray:
-        Mc = M - M.mean(axis=1, keepdims=True)
-        return Mc / (np.linalg.norm(Mc, axis=1, keepdims=True) + 1e-12)
-
     train_n, test_n = _normed(X_train), _normed(X_test)
     sims = test_n @ train_n.T          # (n_test, n_train) correlation matrix
     best = sims.argmax(axis=1)         # most-correlated training row per test row
