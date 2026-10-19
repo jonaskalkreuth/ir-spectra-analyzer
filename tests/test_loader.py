@@ -34,6 +34,14 @@ def test_column_aliases():
     os.unlink(path)
 
 
+def test_alias_priority():
+    # Two intensity-like columns: the canonical name must win every run.
+    path = _write_tmp("wavenumber,absorbance,intensity\n4000,0.1,0.9\n3000,0.2,0.8\n")
+    df = load_spectrum(path)
+    assert df["intensity"].tolist() == [0.9, 0.8]
+    os.unlink(path)
+
+
 def test_missing_row_dropped():
     path = _write_tmp(MISSING_ROW_CSV)
     with pytest.warns(UserWarning):
