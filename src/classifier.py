@@ -615,7 +615,7 @@ def predict(
 
     Input is absorbance, but the model was trained on OpenSpecy's derivative
     library. So the spectrum is first converted to that form
-    (`to_openspecy_derivative`: 5 cm⁻¹ resample → Savitzky-Golay first derivative
+    (`to_openspecy_derivative`: 6 cm⁻¹ resample → Savitzky-Golay first derivative
     → absolute value → min-max), then put through `spectrum_to_features`, the same
     transform the training rows went through.
 
@@ -635,8 +635,8 @@ def predict(
 
     # spectrum_to_features returns a 1-D (851,) vector; sklearn wants a 2-D
     # (n_samples, n_features) matrix, so reshape to a single-row batch.
-    wn_5cm, derivative = to_openspecy_derivative(wavenumbers, intensities)
-    features = spectrum_to_features(wn_5cm, derivative).reshape(1, -1)
+    wn_6cm, derivative = to_openspecy_derivative(wavenumbers, intensities)
+    features = spectrum_to_features(wn_6cm, derivative).reshape(1, -1)
 
     # One Platt-calibrated probability per class (column k ↔ classes[k]); [0] picks
     # the single row back out of the batch.

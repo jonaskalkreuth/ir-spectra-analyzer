@@ -5,6 +5,7 @@ from src.preprocessing import (
     smooth,
     baseline_correct,
     convert_to_absorbance,
+    to_openspecy_derivative,
 )
 
 
@@ -68,3 +69,11 @@ def test_convert_to_absorbance_clamps_zero():
     # Should not crash on zero transmittance
     result = convert_to_absorbance(np.array([0.0]))
     assert np.isfinite(result[0])
+
+
+def test_to_openspecy_derivative_6cm_grid():
+    # Output must sit on the library's 6 cm⁻¹ grid (multiples of 6)
+    wn = np.linspace(4000.0, 650.0, 1800)
+    grid, _ = to_openspecy_derivative(wn, np.random.rand(len(wn)))
+    np.testing.assert_allclose(np.diff(grid), 6.0)
+    np.testing.assert_allclose(grid % 6.0, 0.0)
