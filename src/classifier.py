@@ -28,7 +28,7 @@ from .config import (
 from .data_acquisition import load_openspecy
 from .peak_detection import detect_peaks
 from .polymer_rules import classify_by_rules
-from .preprocessing import baseline_correct, smooth, normalize
+from .preprocessing import baseline_correct, smooth, normalize, to_openspecy_derivative
 
 
 # Feature grid: the step-16 ROI (600–4000 cm⁻¹), NOT the original 400–4000.
@@ -602,14 +602,16 @@ def predict(
     top_k: int = 3,
 ) -> dict:
     """
-    Classify one raw spectrum: arrays in, prediction out.
+    Classify one absorbance spectrum: arrays in, prediction out.
 
     Pure inference helper — takes the raw (wavenumbers, intensities) arrays, NOT a
     file path, so it can be unit-tested on a synthetic spectrum with nothing on disk.
-    The spectrum is put through the EXACT training transform (`spectrum_to_features`:
-    resample to the 851-point grid → baseline → smooth → normalize) so inference and
-    training see identically-shaped vectors — the cardinal rule that stops train/serve
-    skew.
+
+    Input is absorbance, but the model was trained on OpenSpecy's derivative
+    library. So the spectrum is first converted to that form
+    (`to_openspecy_derivative`: 5 cm⁻¹ resample → Savitzky-Golay first derivative
+    → absolute value → min-max), then put through `spectrum_to_features`, the same
+    transform the training rows went through.
 
     `bundle` lets a caller pass an already-loaded model dict (e.g. a test fixture, or
     the CLI loading once); when None we load it from `model_path`.
@@ -627,7 +629,8 @@ def predict(
 
     # spectrum_to_features returns a 1-D (851,) vector; sklearn wants a 2-D
     # (n_samples, n_features) matrix, so reshape to a single-row batch.
-    features = spectrum_to_features(wavenumbers, intensities).reshape(1, -1)
+    wn_5cm, derivative = to_openspecy_derivative(wavenumbers, intensities)
+    features = spectrum_to_features(wn_5cm, derivative).reshape(1, -1)
 
     # One Platt-calibrated probability per class (column k ↔ classes[k]); [0] picks
     # the single row back out of the batch.

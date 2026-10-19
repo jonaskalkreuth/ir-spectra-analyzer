@@ -117,3 +117,37 @@ def normalize(intensity: np.ndarray) -> np.ndarray:
         return intensity
 
     return (intensity - min_val) / span
+
+
+def to_openspecy_derivative(
+    wavenumbers: np.ndarray,
+    intensities: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Convert an absorbance spectrum to OpenSpecy's derivative form.
+
+    The OpenSpecy library (`derivative.rds`) stores processed spectra, not
+    absorbance. This mirrors the `process_spec` defaults that produced it:
+      1. conform_spec : linear resample to a uniform 5 cm⁻¹ grid
+      2. Savitzky-Golay first derivative (window 11, polynomial 3)
+      3. absolute value
+      4. make_rel     : min-max scale to [0, 1]
+
+    Absorbance band centres become local minima, flanked by two peaks.
+
+    Returns
+    -------
+    (wavenumbers_5cm, derivative) : the ascending 5 cm⁻¹ axis and the
+    processed signal on it
+    """
+    finite = ~np.isnan(intensities)
+    wn, y = wavenumbers[finite], intensities[finite]
+    order = np.argsort(wn)  # np.interp needs an ascending axis
+    wn, y = wn[order], y[order]
+
+    step = 5.0
+    grid = np.arange(np.ceil(wn[0] / step) * step, wn[-1] + step / 2, step)
+    resampled = np.interp(grid, wn, y)
+
+    derivative = np.abs(savgol_filter(resampled, window_length=11, polyorder=3, deriv=1))
+    return grid, normalize(derivative)

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from src.classifier import (
+    MODEL_PATH,
     WAVENUMBER_GRID,
     build_svm_pipeline,
     count_exact_duplicates,
@@ -14,6 +15,7 @@ from src.classifier import (
     save_model,
     spectrum_to_features,
 )
+from src.preprocessing import to_openspecy_derivative
 
 
 def _gaussian(x, center, sigma, height):
@@ -226,3 +228,32 @@ def test_top_k_is_ranked_highest_first():
     assert result["predicted_class"] == "B"
     assert result["confidence"] == 0.7
     assert [r["class"] for r in result["top_k"]] == ["B", "C", "A"]
+
+
+# --- Inference transform: absorbance → OpenSpecy derivative form -------------
+
+def test_derivative_turns_band_centre_into_a_dip():
+    # An absolute first derivative is zero at a band's apex and largest on its
+    # flanks, so a single absorbance band becomes a dip between two peaks.
+    wn = np.linspace(400, 4000, 1800)
+    sig = _gaussian(wn, 1460, 15, 1.0)
+    grid, deriv = to_openspecy_derivative(wn, sig)
+
+    window = (grid > 1380) & (grid < 1540)
+    g, d = grid[window], deriv[window]
+    centre = np.argmin(np.where(np.abs(g - 1460) < 20, d, np.inf))
+    assert abs(g[centre] - 1460) <= 5                    # dip sits on the band centre
+    assert d[centre] < 0.1                               # ...and it is a near-zero minimum
+    assert d[g < 1460].max() > 0.5 and d[g > 1460].max() > 0.5  # peaks on both flanks
+
+
+@pytest.mark.skipif(not MODEL_PATH.exists(), reason="trained model not present")
+def test_saved_model_classifies_synthetic_pe_absorbance():
+    # PE's main bands: CH2 stretches, CH2 scissor doublet, CH2 rock doublet.
+    # predict() must convert this absorbance input to derivative form itself.
+    wn = np.linspace(4000, 400, 1800)
+    bands = [(2915, 15, 1.0), (2848, 12, 0.8), (1470, 6, 0.4),
+             (1462, 6, 0.35), (730, 4, 0.25), (719, 4, 0.3)]
+    sig = sum(_gaussian(wn, c, s, h) for c, s, h in bands)
+    result = predict(wn, sig)
+    assert result["predicted_class"] == "poly(ethylene)", result["top_k"]
