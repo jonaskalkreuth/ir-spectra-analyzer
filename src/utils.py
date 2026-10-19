@@ -34,7 +34,7 @@ def print_results(results: dict) -> None:
 
     groups = results.get("groups", [])
     if groups:
-        print(f"\n  Functional group assignments ({len(groups)} matches):\n")
+        print(f"\n  Possible functional-group assignments (window match only) ({len(groups)} matches):\n")
         seen = set()
         for g in groups:
             key = (g["group"], round(g["wavenumber"]))
