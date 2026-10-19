@@ -1,5 +1,5 @@
 """
-Step 22 — Persist the winning model (SVM) with joblib.
+Persist the winning model (SVM) with joblib.
 
 Re-fits the tuned SVM on the full training set with `probability=True` (so the
 saved model can emit a confidence later), scores it once on the shared seed-42
@@ -26,7 +26,7 @@ from src.classifier import load_model, load_split, save_model, train_svm
 
 
 def main():
-    # Re-fit the tuned SVM with probability calibration on (step-22 flag).
+    # Re-fit the tuned SVM with probability calibration on.
     model = train_svm(probability=True)
 
     # Recompute the held-out F1 on the SAME seed-42 split, to store in the bundle.

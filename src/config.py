@@ -21,7 +21,7 @@ REGIONS = {
     "Fingerprint":    (400,  1500),
 }
 
-# ML / classifier training (step 19+)
+# ML / classifier training
 RANDOM_STATE = 42           # shared seed → SVM/RF/baseline get the identical train/test split
 TEST_SIZE = 0.2             # fraction held out for the one-shot final evaluation
 TUNE_SUBSAMPLE = 4000       # stratified rows used for the hyperparameter search only
@@ -36,7 +36,7 @@ SVM_PARAM_GRID = [
 
 # RF grid: the two knobs the plan tunes — forest size and tree depth.
 # Plain dict (no kernel-style incompatibilities to guard against, unlike SVM).
-# Keys have NO prefix because RF is a bare estimator, not a Pipeline (step-20 fork 2A).
+# Keys have NO prefix because RF is a bare estimator, not a Pipeline.
 #   n_estimators: more trees = steadier vote, diminishing returns; 200/400 brackets it.
 #   max_depth:    None = grow until pure (max variance); 20/40 cap depth to curb overfit.
 RF_PARAM_GRID = {

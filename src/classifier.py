@@ -2,7 +2,6 @@
 # Feature vector: spectrum resampled to a fixed 600–4000 cm⁻¹ grid at 4 cm⁻¹
 # steps (851 features), then baseline-corrected, smoothed, and normalized —
 # the processed grid IS the feature vector fed to SVM/RF.
-# TODO: train/evaluate/persist implemented in steps B1b-1c-ii through B1b-1c-v.
 
 from datetime import date
 from pathlib import Path
@@ -31,7 +30,7 @@ from .polymer_rules import classify_by_rules
 from .preprocessing import baseline_correct, smooth, normalize, to_openspecy_derivative
 
 
-# Feature grid: the step-16 ROI (600–4000 cm⁻¹), NOT the original 400–4000.
+# Feature grid: the preprocessing ROI (600–4000 cm⁻¹), NOT the original 400–4000.
 # Below ~600 the OpenSpecy FTIR grid is empty NaN-pad; above 4000 is NIR overtone
 # territory, not mid-IR fingerprint. 4 cm⁻¹ spacing → 851 points.
 GRID_START = 600
@@ -47,7 +46,8 @@ def resample_to_grid(wavenumbers: np.ndarray, intensities: np.ndarray) -> np.nda
     Drops NaN-padded points first: the raw OpenSpecy spectra are padded with NaN
     outside their measured range, and np.interp would otherwise carry those NaNs
     into the output. Grid points beyond a spectrum's measured span are edge-clamped
-    by np.interp (flat extension) — acceptable since post-crop coverage is ~100%.
+    by np.interp (flat extension). Known limitation: 19.5% of spectra stop below
+    3,500 cm⁻¹, so their high-wavenumber end is a flat copy of the last measured value.
 
     Returns a 1-D array of length len(WAVENUMBER_GRID) (851).
     """
@@ -66,7 +66,7 @@ def spectrum_to_features(
     """
     Turn one raw spectrum into its fixed-length feature vector.
 
-    Resample-FIRST (fork 2→B): land the raw spectrum on the uniform 851-point grid,
+    Resample-FIRST: land the raw spectrum on the uniform 851-point grid,
     THEN run the validated chain on that grid. Because every spectrum now shares the
     exact same axis, savgol's window is a constant physical cm⁻¹ width across the whole
     dataset, and feature column k maps to a fixed wavenumber for every sample.
@@ -79,7 +79,7 @@ def spectrum_to_features(
     return normalize(smoothed)                # min-max to [0,1] LAST, after the range has shifted
 
 
-# --- Step 17: training-set assembly ------------------------------------------
+# --- Training-set assembly ---------------------------------------------------
 
 MIN_CLASS_COUNT = 300  # classes below this are dropped; natural cliff (9th class = 126)
 
@@ -144,7 +144,7 @@ def assemble_training_set(
     min_count: int = MIN_CLASS_COUNT,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Run the full step-17 pipeline: load → measure dupes → drop → class-filter → save.
+    Run the full training-set pipeline: load → measure dupes → drop → class-filter → save.
 
     Returns the cleaned (wavenumbers, spectra, labels).
     """
@@ -173,7 +173,7 @@ def assemble_training_set(
     return wavenumbers, spectra, labels
 
 
-# --- Step 18: feature engineering --------------------------------------------
+# --- Feature engineering -----------------------------------------------------
 
 
 def build_feature_matrix(
@@ -206,7 +206,7 @@ def save_feature_matrix(
     """Cache the feature matrix + labels + grid as one compressed .npz."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    labels = np.asarray(labels, dtype=str)  # same object→unicode cast as step 17
+    labels = np.asarray(labels, dtype=str)  # same object→unicode cast as assemble_training_set
     np.savez_compressed(path, X=X, labels=labels, grid=grid)
 
 
@@ -215,10 +215,10 @@ def build_features(
     out_path: Path = Path("data/openspecy/features.npz"),
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Run the full step-18 pipeline: load step-17 set → build X → cache → return (X, y).
+    Run the full feature pipeline: load training set → build X → cache → return (X, y).
 
-    Hybrid output (fork 4): returns (X, y) in-memory for callers AND caches to
-    features.npz so steps 19–21 can np.load without re-running the chain per CV fit.
+    Hybrid output: returns (X, y) in-memory for callers AND caches to features.npz
+    so training and comparison can np.load without re-running the chain per CV fit.
     """
     data = np.load(train_path)
     wavenumbers, spectra, labels = data["wavenumbers"], data["spectra"], data["labels"]
@@ -232,11 +232,11 @@ def build_features(
     return X, labels
 
 
-# --- Step 19: SVM training ---------------------------------------------------
+# --- SVM training ------------------------------------------------------------
 
 # RANDOM_STATE, TEST_SIZE, TUNE_SUBSAMPLE, SVM_PARAM_GRID now live in config.py.
 # RANDOM_STATE is the mechanism that makes the train/test split SHARED across models:
-# SVM (step 19), RF (step 20), and the rule baseline (step 21) all call load_split()
+# SVM, RF, and the rule baseline all call load_split()
 # with this same seed → all three are evaluated on the identical held-out rows.
 
 
@@ -278,10 +278,10 @@ def build_svm_pipeline(probability: bool = False) -> Pipeline:
     columns must share a scale or the wide-variance wavenumbers dominate the kernel.
     `class_weight='balanced'` reweights the hinge loss inversely to class frequency.
 
-    `probability=True` (step 22, the persisted model only) fits Platt scaling — an
+    `probability=True` (the persisted model only) fits Platt scaling — an
     internal 5-fold CV that calibrates the margins into per-class probabilities, so
     `.predict_proba()` works for the CLI's confidence readout. It's off during tuning
-    (step 19) because it costs an extra CV pass and the grid search never asks for
+    because it costs an extra CV pass and the grid search never asks for
     probabilities. `random_state` is pinned so that Platt calibration is reproducible.
     """
     return Pipeline([
@@ -334,14 +334,14 @@ def train_svm(
     probability: bool = False,
 ) -> Pipeline:
     """
-    Full step-19 pipeline: load shared split → tune on subsample → refit best params
+    Full SVM pipeline: load shared split → tune on subsample → refit best params
     on the FULL training set → evaluate once on the held-out test set.
 
-    `probability` is passed only to the FINAL refit (step 22 persists with it on for
+    `probability` is passed only to the FINAL refit (persist_model.py turns it on for
     `.predict_proba`); tuning stays cheap with it off. The chosen-class decision is
     unaffected by the flag, so the held-out F1 is identical either way.
 
-    Returns the fitted pipeline (refit on all training data) so step 22 can persist it.
+    Returns the fitted pipeline (refit on all training data) so it can be persisted.
     """
     X_train, X_test, y_train, y_test = load_split(features_path)
     print(f"[svm] train={X_train.shape[0]:,}  test={X_test.shape[0]:,}")
@@ -363,14 +363,13 @@ def train_svm(
     return model
 
 
-# --- Step 20: Random Forest training -----------------------------------------
+# --- Random Forest training --------------------------------------------------
 
 # RF reuses the SAME load_split() as SVM (shared seed-42 split) so both models —
-# and the step-21 baseline — are scored on the identical held-out rows. The two
-# deviations from train_svm are deliberate (step-20 forks): (2A) NO Pipeline/scaler,
-# because trees split on per-feature thresholds and are scale-invariant; and (3A)
-# tuning runs on the FULL training set, because RF cost is ~linear and parallel,
-# unlike SVC's ~O(n²–n³) that forced the 4k subsample.
+# and the rule baseline — are scored on the identical held-out rows. The two
+# deviations from train_svm are deliberate: NO Pipeline/scaler, because trees
+# split on per-feature thresholds and are scale-invariant; and tuning runs on
+# the FULL training set, because RF cost is ~linear and parallel, unlike SVC's ~O(n²–n³) that forced the 4k subsample.
 
 
 def build_rf(random_state: int = RANDOM_STATE) -> RandomForestClassifier:
@@ -419,11 +418,11 @@ def train_random_forest(
     features_path: Path = Path("data/openspecy/features.npz"),
 ) -> RandomForestClassifier:
     """
-    Full step-20 pipeline: load shared split → tune on full train → refit best
+    Full RF pipeline: load shared split → tune on full train → refit best
     params → evaluate once on the held-out test set.
 
     Mirrors train_svm exactly, minus the subsample step. Returns the fitted forest
-    so step 22 can persist it and step 21 can compare it head-to-head with the SVM.
+    so compare_models can score it head-to-head with the SVM.
     """
     X_train, X_test, y_train, y_test = load_split(features_path)
     print(f"[rf] train={X_train.shape[0]:,}  test={X_test.shape[0]:,}")
@@ -444,12 +443,12 @@ def train_random_forest(
     return model
 
 
-# --- Step 21: model comparison -----------------------------------------------
+# --- Model comparison --------------------------------------------------------
 
 # The rule baseline doesn't take a feature vector — it takes a list of peak
 # wavenumbers (polymer_rules.classify_by_rules). So before it can vote on the
 # test set we bridge each processed 851-d spectrum back into peaks with the
-# existing detect_peaks(), then map those to the rule table. Option A: all three
+# existing detect_peaks(), then map those to the rule table. That way all
 # classifiers start from the IDENTICAL processed spectra and load_split() rows.
 
 
@@ -513,8 +512,8 @@ def compare_models(
     Race the rule baseline vs correlation matching vs SVM vs RF on the shared
     held-out test set.
 
-    Trains both ML models (full step-19/20 pipelines), then scores all four on
-    the IDENTICAL test rows. The fairness hinges on load_split() being
+    Trains both ML models (full train_svm/train_random_forest pipelines), then
+    scores all four on the IDENTICAL test rows. The fairness hinges on load_split() being
     deterministic: train_svm/train_random_forest each split internally with the
     same seed-42, and the load_split() call here reproduces the exact same rows,
     so every classifier is judged on the same spectra.
@@ -557,7 +556,7 @@ def compare_models(
     }
 
 
-# --- Step 22: persist the winning model --------------------------------------
+# --- Persist the winning model -----------------------------------------------
 
 MODEL_PATH = Path("models/svm_classifier.joblib")
 
@@ -598,7 +597,7 @@ def load_model(path: Path = MODEL_PATH) -> dict:
     return joblib.load(path)
 
 
-# --- Step 24: single-spectrum inference --------------------------------------
+# --- Single-spectrum inference -----------------------------------------------
 
 def predict(
     wavenumbers: np.ndarray,

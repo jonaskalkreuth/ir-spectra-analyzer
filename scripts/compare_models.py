@@ -1,7 +1,7 @@
 """
-Step 21 — Model comparison: rule baseline vs SVM vs Random Forest.
+Model comparison: rule baseline vs correlation matching vs SVM vs Random Forest.
 
-Trains the two ML models, races all three on the shared seed-42 held-out test
+Trains the two ML models, races all four on the shared seed-42 held-out test
 set, prints the F1-macro table + per-class report for the winner, and saves three
 figures to reports/:
 

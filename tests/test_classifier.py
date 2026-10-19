@@ -30,7 +30,7 @@ def make_spectrum(centers, heights, wn):
     return signal
 
 
-# --- Cluster 2: pure transforms ----------------------------------------------
+# --- Pure transforms ---------------------------------------------------------
 
 def test_resample_lands_on_the_grid():
     # Native axis runs DESCENDING (4000→400, as the OpenSpecy/SDBS files do) to
@@ -61,7 +61,7 @@ def test_features_are_normalized_to_unit_interval():
     assert feats.min() >= 0.0 and feats.max() <= 1.0
 
 
-# --- Cluster 3: training-set assembly helpers --------------------------------
+# --- Training-set assembly helpers -------------------------------------------
 
 def test_counts_exact_duplicate_rows():
     # Rows 0 and 2 are identical; only row 2 is the repeat → count is 1
@@ -110,7 +110,7 @@ def test_filter_classes_drops_rare_tail():
     assert kept_spectra.shape[0] == 3
 
 
-# --- Cluster 3b: correlation library-matching baseline -----------------------
+# --- Correlation library-matching baseline -----------------------------------
 
 def test_correlation_baseline_matches_nearest_class():
     # Two well-separated class prototypes (peak at 1700 vs 2900). Each test
@@ -144,7 +144,7 @@ def test_correlation_baseline_is_scale_invariant():
     assert preds[0] == "A"
 
 
-# --- Cluster 4: model lifecycle (save/load + predict) ------------------------
+# --- Model lifecycle (save/load + predict) -----------------------------------
 
 # Three synthetic classes, each a single Gaussian at a distinct, well-separated
 # wavenumber → trivially learnable, so a real SVM trains in milliseconds.
@@ -162,7 +162,7 @@ def synth_spectrum(center, seed=None):
 
 @pytest.fixture(scope="module")
 def tiny_model():
-    """A real SVM fit on ~36 synthetic spectra (Option A: self-contained).
+    """A real SVM fit on ~36 synthetic spectra (self-contained).
 
     Needs no data files and no models/*.joblib, so the suite runs on a fresh
     clone. probability=True mirrors the persisted model so predict()'s
