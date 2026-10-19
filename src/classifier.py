@@ -338,8 +338,8 @@ def train_svm(
 
     `probability` is passed only to the FINAL refit (persist_model.py turns it on for
     `.predict_proba`); tuning stays cheap with it off. The flag leaves `.predict` unchanged,
-    but the argmax of `.predict_proba` (used by `predict()`) disagrees with it on 11 of
-    4,113 test spectra (F1 0.9770 vs 0.9758).
+    but the argmax of `.predict_proba` disagrees with it on 11 of 4,113 test spectra
+    (F1 0.9758 vs 0.9770). The reported F1 and `predict()` both use `.predict`.
 
     Returns the fitted pipeline (refit on all training data) so it can be persisted.
     """
@@ -623,11 +623,15 @@ def predict(
     `bundle` lets a caller pass an already-loaded model dict (e.g. a test fixture, or
     the CLI loading once); when None we load it from `model_path`.
 
+    The class comes from `model.predict`, the same call the reported F1 scores.
+    With Platt scaling it can differ from the highest probability, so `confidence`
+    is not always the top of `top_k`.
+
     Returns
     -------
     dict with keys:
-      predicted_class – the winning label (str)
-      confidence      – its probability in [0, 1] (float)
+      predicted_class – the label from `model.predict` (str)
+      confidence      – that label's probability in [0, 1] (float)
       top_k           – list of {"class", "probability"} dicts, highest first
     """
     if bundle is None:
@@ -649,8 +653,10 @@ def predict(
         {"class": str(classes[i]), "probability": round(float(probabilities[i]), 4)}
         for i in order
     ]
+    predicted_class = str(model.predict(features)[0])
+    confidence = probabilities[list(classes).index(predicted_class)]
     return {
-        "predicted_class": ranked[0]["class"],
-        "confidence": ranked[0]["probability"],
+        "predicted_class": predicted_class,
+        "confidence": round(float(confidence), 4),
         "top_k": ranked,
     }

@@ -58,14 +58,18 @@ def print_results(results: dict) -> None:
             f"\n  Predicted material: {prediction['predicted_class']}  "
             f"({prediction['confidence']:.1%} confidence)"
         )
-        # Show the runners-up so model uncertainty is visible — a near-tie
+        # Show the other classes so model uncertainty is visible — a near-tie
         # (e.g. 51% vs 47%) reads very differently from a confident 94%.
-        others = prediction["top_k"][1:]
+        # The predicted class may not be the most probable, so filter by name.
+        others = [
+            o for o in prediction["top_k"]
+            if o["class"] != prediction["predicted_class"]
+        ]
         if others:
             ranked = ", ".join(
                 f"{o['class']} {o['probability']:.1%}" for o in others
             )
-            print(f"  Runners-up: {ranked}")
+            print(f"  Other classes: {ranked}")
 
     print(f"\n{sep}\n")
 

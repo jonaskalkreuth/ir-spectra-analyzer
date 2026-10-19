@@ -27,7 +27,7 @@ from pathlib import Path
 # Allow running from the project root without installing the package
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.analyzer import analyze
+from src.analyzer import analyze, preprocess
 from src.classifier import predict
 from src.loader import load_spectrum
 from src.preprocessing import convert_to_absorbance
@@ -167,10 +167,18 @@ def main() -> None:
         print(f"Results saved to {args.output}")
 
     if args.plot:
+        # Plot the same normalised spectrum the peaks were found on, so the
+        # labels sit at their detected heights.
         df = load_spectrum(args.input)
+        wavenumbers, intensity = preprocess(
+            df["wavenumber"].values.astype(float),
+            df["intensity"].values.astype(float),
+            correct_baseline=not args.no_baseline,
+            input_is_transmittance=args.transmittance,
+        )
         plot_spectrum(
-            df["wavenumber"].values,
-            df["intensity"].values,
+            wavenumbers,
+            intensity,
             results=results,
             title=f"IR Spectrum — {Path(args.input).name}",
             output_path=args.plot_output,

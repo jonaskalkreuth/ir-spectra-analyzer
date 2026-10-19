@@ -12,6 +12,8 @@ import numpy as np
 from scipy.signal import find_peaks, peak_prominences, peak_widths
 from dataclasses import dataclass
 
+from . import config
+
 
 @dataclass
 class Peak:
@@ -26,9 +28,9 @@ class Peak:
 def detect_peaks(
     intensity: np.ndarray,
     wavenumbers: np.ndarray,
-    min_prominence: float = 0.05,
-    min_height: float = 0.02,
-    min_distance_cm: float = 20.0,
+    min_prominence: float = config.MIN_PROMINENCE,
+    min_height: float = config.MIN_HEIGHT,
+    min_distance_cm: float = config.MIN_DISTANCE_CM,
 ) -> list:
     """
     Detect absorption peaks in a preprocessed (normalized) IR spectrum.

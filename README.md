@@ -176,10 +176,10 @@ classes — **and** the model's prediction (trimmed here):
     ...
 
   Predicted material: poly(esters/ethers/diglycidylethers/terephthalates)s  (100.0% confidence)
-  Runners-up: polystyrenes (polyphenylethylenes, -methylstyrene) 0.0%, polyhaloolefins (vinylhalides) 0.0%
+  Other classes: polystyrenes (polyphenylethylenes, -methylstyrene) 0.0%, polyhaloolefins (vinylhalides) 0.0%
 ```
 
-The runners-up are shown deliberately: a confident "99% polyester" and a
+The other classes are shown deliberately: a confident "99% polyester" and a
 coin-flip "51% mineral / 47% PE" are very different signals, and a
 chemometrician wants to see the model's uncertainty, not just its top guess.
 
@@ -290,7 +290,7 @@ data/
   openspecy/           # OpenSpecy download + derived .npz (gitignored)
 models/                # trained model bundle (gitignored)
 reports/               # committed comparison figures
-tests/                 # pytest suite (64 tests)
+tests/                 # pytest suite (66 tests)
 requirements-lock.txt  # pinned versions (Python 3.11)
 requirements.txt       # loose version bounds
 LICENSE                # MIT (code only)
@@ -302,7 +302,7 @@ LICENSE                # MIT (code only)
 python -m pytest
 ```
 
-The suite (64 tests) covers the signal-processing half and the ML half,
+The suite (66 tests) covers the signal-processing half and the ML half,
 including a synthetic-model fixture so the classifier tests run on a fresh
 clone with no downloaded data. One integration test needs the trained model
 and is skipped without it. CI runs the suite on every push and pull request.

@@ -27,6 +27,46 @@ def _label_region(wavenumber: float) -> str:
     return "Out of range"
 
 
+def preprocess(
+    wavenumbers: np.ndarray,
+    intensity: np.ndarray,
+    *,
+    correct_baseline: bool = True,
+    input_is_transmittance: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Turn a raw spectrum into the normalised absorbance that peaks are found on.
+
+    Orients high→low wavenumber, then converts, baseline-corrects, smooths and
+    normalises. Returns (wavenumbers, intensity).
+    """
+    # Ensure spectrum runs high→low wavenumber (conventional IR orientation)
+    if wavenumbers[0] < wavenumbers[-1]:
+        wavenumbers = wavenumbers[::-1]
+        intensity = intensity[::-1]
+
+    if input_is_transmittance:
+        logger.debug("Converting transmittance to absorbance.")
+        from .preprocessing import convert_to_absorbance
+        intensity = convert_to_absorbance(intensity)
+
+    if correct_baseline:
+        logger.debug("Applying ALS baseline correction.")
+        intensity = baseline_correct(
+            intensity, lam=config.ALS_LAMBDA, p=config.ALS_P
+        )
+
+    logger.debug("Smoothing with Savitzky-Golay (window=%d, order=%d).",
+                 config.SAVGOL_WINDOW, config.SAVGOL_POLYORDER)
+    intensity = smooth(
+        intensity,
+        window_length=config.SAVGOL_WINDOW,
+        polyorder=config.SAVGOL_POLYORDER,
+    )
+
+    return wavenumbers, normalize(intensity)
+
+
 def analyze(
     path: str,
     *,
@@ -78,34 +118,12 @@ def analyze(
     logger.info("Loading spectrum: %s", path)
     df = load_spectrum(path)
 
-    wavenumbers = df["wavenumber"].values.astype(float)
-    intensity = df["intensity"].values.astype(float)
-
-    # Ensure spectrum runs high→low wavenumber (conventional IR orientation)
-    if wavenumbers[0] < wavenumbers[-1]:
-        wavenumbers = wavenumbers[::-1]
-        intensity = intensity[::-1]
-
-    if input_is_transmittance:
-        logger.debug("Converting transmittance to absorbance.")
-        from .preprocessing import convert_to_absorbance
-        intensity = convert_to_absorbance(intensity)
-
-    if correct_baseline:
-        logger.debug("Applying ALS baseline correction.")
-        intensity = baseline_correct(
-            intensity, lam=config.ALS_LAMBDA, p=config.ALS_P
-        )
-
-    logger.debug("Smoothing with Savitzky-Golay (window=%d, order=%d).",
-                 config.SAVGOL_WINDOW, config.SAVGOL_POLYORDER)
-    intensity = smooth(
-        intensity,
-        window_length=config.SAVGOL_WINDOW,
-        polyorder=config.SAVGOL_POLYORDER,
+    wavenumbers, intensity = preprocess(
+        df["wavenumber"].values.astype(float),
+        df["intensity"].values.astype(float),
+        correct_baseline=correct_baseline,
+        input_is_transmittance=input_is_transmittance,
     )
-
-    intensity = normalize(intensity)
 
     logger.debug("Detecting peaks.")
     raw_peaks = detect_peaks(
