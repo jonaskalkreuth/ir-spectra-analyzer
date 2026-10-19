@@ -356,7 +356,9 @@ def train_svm(
     model.fit(X_train, y_train)
 
     # The held-out test set is touched here for the FIRST and ONLY time.
-    test_f1 = f1_score(y_test, model.predict(X_test), average="macro")
+    test_f1 = f1_score(
+        y_test, model.predict(X_test), labels=sorted(np.unique(y_train)), average="macro"
+    )
     print(f"[svm] held-out test F1-macro: {test_f1:.3f}")
     return model
 
@@ -435,7 +437,9 @@ def train_random_forest(
     model.fit(X_train, y_train)
 
     # The held-out test set is touched here for the FIRST and ONLY time.
-    test_f1 = f1_score(y_test, model.predict(X_test), average="macro")
+    test_f1 = f1_score(
+        y_test, model.predict(X_test), labels=sorted(np.unique(y_train)), average="macro"
+    )
     print(f"[rf] held-out test F1-macro: {test_f1:.3f}")
     return model
 
@@ -533,8 +537,11 @@ def compare_models(
         "svm": svm.predict(X_test),
         "random_forest": rf.predict(X_test),
     }
+    # Score over the 8 real classes only, so the rule baseline's "Unknown"
+    # output counts as a miss rather than as a 9th class in the macro average.
+    classes = sorted(np.unique(y_train))
     f1_macro = {
-        name: f1_score(y_test, y_pred, average="macro")
+        name: f1_score(y_test, y_pred, labels=classes, average="macro")
         for name, y_pred in predictions.items()
     }
 
